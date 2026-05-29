@@ -12,6 +12,7 @@ interface FlightSceneProps {
   onToggleShowTrail: () => void
   onToggleShowPathTrail: () => void
   motionSmoothing: number
+  onMotionSmoothingChange: (value: number) => void
 }
 
 interface SceneRefs {
@@ -345,6 +346,7 @@ export function FlightScene({
   onToggleShowTrail,
   onToggleShowPathTrail,
   motionSmoothing,
+  onMotionSmoothingChange,
 }: FlightSceneProps) {
   const mountRef = useRef<HTMLDivElement | null>(null)
   const sceneRef = useRef<SceneRefs | null>(null)
@@ -723,6 +725,20 @@ export function FlightScene({
         <span className="rounded-box border border-base-300 bg-base-100/85 px-2 py-1 text-[11px] font-semibold text-base-content/80">
           Autozoom
         </span>
+        <label className="flex items-center gap-1 rounded-box border border-base-300 bg-base-100/85 px-2 py-1 text-[11px] font-semibold text-base-content/80">
+          <span>Smooth</span>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={motionSmoothing}
+            onChange={(event) => onMotionSmoothingChange(Number(event.target.value))}
+            className="range range-primary range-xs w-20"
+            aria-label="Motion smoothing"
+          />
+          <span className="w-8 text-right">{Math.round(motionSmoothing * 100)}%</span>
+        </label>
         <button
           type="button"
           className={`btn btn-xs ${isFullscreen ? 'btn-primary' : 'btn-outline'}`}

@@ -362,6 +362,7 @@ function App() {
                 onToggleShowTrail={() => setShowTrailLines((current) => !current)}
                 onToggleShowPathTrail={() => setShowPathTrail((current) => !current)}
                 motionSmoothing={motionSmoothing}
+                onMotionSmoothingChange={setMotionSmoothing}
               />
             ) : (
               <div className="scene-view flex items-center justify-center">
