@@ -1,5 +1,31 @@
 import type { TelemetryFrame } from '../types'
 
+export interface InterpolationSettings {
+  position: boolean
+  heading: boolean
+  speed: boolean
+  altitude: boolean
+  roll: boolean
+  pitch: boolean
+  throttle: boolean
+  rudder: boolean
+  elevator: boolean
+  aileron: boolean
+}
+
+export const DEFAULT_INTERPOLATION_SETTINGS: InterpolationSettings = {
+  position: true,
+  heading: true,
+  speed: true,
+  altitude: true,
+  roll: true,
+  pitch: true,
+  throttle: true,
+  rudder: true,
+  elevator: true,
+  aileron: true,
+}
+
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
 }
@@ -13,7 +39,11 @@ function lerpAngle(start: number, end: number, amount: number): number {
   return start + delta * amount
 }
 
-export function sampleFrameAtTime(frames: TelemetryFrame[], elapsedMs: number): TelemetryFrame | null {
+export function sampleFrameAtTime(
+  frames: TelemetryFrame[],
+  elapsedMs: number,
+  interpolationSettings: InterpolationSettings = DEFAULT_INTERPOLATION_SETTINGS,
+): TelemetryFrame | null {
   if (frames.length === 0) {
     return null
   }
@@ -48,21 +78,39 @@ export function sampleFrameAtTime(frames: TelemetryFrame[], elapsedMs: number): 
   return {
     ...previousFrame,
     elapsedMs,
-    altitudeM: lerp(previousFrame.altitudeM, nextFrame.altitudeM, amount),
-    speedKmh: lerp(previousFrame.speedKmh, nextFrame.speedKmh, amount),
+    altitudeM: interpolationSettings.altitude
+      ? lerp(previousFrame.altitudeM, nextFrame.altitudeM, amount)
+      : previousFrame.altitudeM,
+    speedKmh: interpolationSettings.speed
+      ? lerp(previousFrame.speedKmh, nextFrame.speedKmh, amount)
+      : previousFrame.speedKmh,
     rssi900MdB: previousFrame.rssi900MdB,
     rssi24GdB: previousFrame.rssi24GdB,
-    rollDeg: lerpAngle(previousFrame.rollDeg, nextFrame.rollDeg, amount),
-    pitchDeg: lerp(previousFrame.pitchDeg, nextFrame.pitchDeg, amount),
-    throttle: lerp(previousFrame.throttle, nextFrame.throttle, amount),
-    rudder: lerp(previousFrame.rudder, nextFrame.rudder, amount),
-    elevator: lerp(previousFrame.elevator, nextFrame.elevator, amount),
-    aileron: lerp(previousFrame.aileron, nextFrame.aileron, amount),
-    headingRad: lerpAngle(previousFrame.headingRad, nextFrame.headingRad, amount),
+    rollDeg: interpolationSettings.roll
+      ? lerpAngle(previousFrame.rollDeg, nextFrame.rollDeg, amount)
+      : previousFrame.rollDeg,
+    pitchDeg: interpolationSettings.pitch
+      ? lerp(previousFrame.pitchDeg, nextFrame.pitchDeg, amount)
+      : previousFrame.pitchDeg,
+    throttle: interpolationSettings.throttle
+      ? lerp(previousFrame.throttle, nextFrame.throttle, amount)
+      : previousFrame.throttle,
+    rudder: interpolationSettings.rudder
+      ? lerp(previousFrame.rudder, nextFrame.rudder, amount)
+      : previousFrame.rudder,
+    elevator: interpolationSettings.elevator
+      ? lerp(previousFrame.elevator, nextFrame.elevator, amount)
+      : previousFrame.elevator,
+    aileron: interpolationSettings.aileron
+      ? lerp(previousFrame.aileron, nextFrame.aileron, amount)
+      : previousFrame.aileron,
+    headingRad: interpolationSettings.heading
+      ? lerpAngle(previousFrame.headingRad, nextFrame.headingRad, amount)
+      : previousFrame.headingRad,
     point: {
-      x: lerp(previousFrame.point.x, nextFrame.point.x, amount),
-      y: lerp(previousFrame.point.y, nextFrame.point.y, amount),
-      z: lerp(previousFrame.point.z, nextFrame.point.z, amount),
+      x: interpolationSettings.position ? lerp(previousFrame.point.x, nextFrame.point.x, amount) : previousFrame.point.x,
+      y: interpolationSettings.position ? lerp(previousFrame.point.y, nextFrame.point.y, amount) : previousFrame.point.y,
+      z: interpolationSettings.position ? lerp(previousFrame.point.z, nextFrame.point.z, amount) : previousFrame.point.z,
     },
   }
 }

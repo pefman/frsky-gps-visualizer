@@ -58,10 +58,6 @@ export function TelemetryPanel({ currentFrame, flightLog }: TelemetryPanelProps)
             <strong className="text-base font-semibold text-base-content">{metricValue(currentFrame?.pitchDeg, '°')}</strong>
           </article>
           <article className="rounded-box border border-base-300 bg-base-200/60 p-2.5">
-            <span className="block text-[11px] text-base-content/65">Throttle</span>
-            <strong className="text-base font-semibold text-base-content">{metricValue(currentFrame?.throttle, '', 0)}</strong>
-          </article>
-          <article className="rounded-box border border-base-300 bg-base-200/60 p-2.5">
             <span className="block text-[11px] text-base-content/65">RSSI 900M</span>
             <strong className="text-base font-semibold text-base-content">{metricValue(currentFrame?.rssi900MdB, ' dB', 0)}</strong>
           </article>

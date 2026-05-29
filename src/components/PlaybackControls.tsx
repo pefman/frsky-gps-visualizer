@@ -7,10 +7,12 @@ interface PlaybackControlsProps {
   durationMs: number
   isPlaying: boolean
   playbackRate: number
+  motionSmoothing: number
   timelineHighlights: TimelineHighlight[]
   timelineMarkers: TimelineMarker[]
   onPlayPause: () => void
   onRestart: () => void
+  onMotionSmoothingChange: (value: number) => void
   onSeek: (value: number) => void
   onJumpToHighlight: (value: number) => void
   onPlaybackRateChange: (value: number) => void
@@ -24,10 +26,12 @@ export function PlaybackControls({
   durationMs,
   isPlaying,
   playbackRate,
+  motionSmoothing,
   timelineHighlights,
   timelineMarkers,
   onPlayPause,
   onRestart,
+  onMotionSmoothingChange,
   onSeek,
   onJumpToHighlight,
   onPlaybackRateChange,
@@ -71,6 +75,20 @@ export function PlaybackControls({
             Restart
           </button>
 
+          <label className="flex items-center gap-2 text-xs text-base-content/70">
+            <span>Smoothing</span>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={motionSmoothing}
+              onChange={(event) => onMotionSmoothingChange(Number(event.target.value))}
+              className="range range-primary range-xs w-24"
+            />
+            <span className="w-8 text-right">{Math.round(motionSmoothing * 100)}%</span>
+          </label>
+
           <label className="ml-auto flex items-center gap-2 text-xs text-base-content/70">
             <span>Speed</span>
             <select
@@ -97,6 +115,18 @@ export function PlaybackControls({
           <div className="relative h-11 rounded-box border border-base-300 bg-base-200/60 px-2 py-1.5">
             <div className="absolute left-2 right-2 top-1/2 h-2 -translate-y-1/2 rounded-full bg-base-300/90" />
 
+            <input
+              className="absolute left-2 right-2 top-1/2 z-[1] h-6 -translate-y-1/2 cursor-pointer opacity-0"
+              type="range"
+              min={0}
+              max={durationSafe}
+              step={1}
+              value={Math.min(currentTimeMs, durationMs)}
+              onChange={(event) => onSeek(Number(event.target.value))}
+              disabled={!canPlay}
+              aria-label="Flight timeline"
+            />
+
             {timelineHighlights.length > 0 ? timelineHighlights.map((highlight) => {
               const leftPercent = (highlight.startMs / durationSafe) * 100
               const widthPercent = Math.max(1.8, ((highlight.endMs - highlight.startMs) / durationSafe) * 100)
@@ -105,7 +135,7 @@ export function PlaybackControls({
                 <button
                   key={highlight.id}
                   type="button"
-                  className={`absolute top-1.5 flex h-7 items-center rounded-md border px-1.5 text-[9px] font-semibold ${toneClassMap[highlight.tone]}`}
+                  className={`absolute top-1.5 z-[2] flex h-7 items-center rounded-md border px-1.5 text-[9px] font-semibold ${toneClassMap[highlight.tone]}`}
                   style={{ left: `calc(2px + ${leftPercent}%)`, width: `max(${widthPercent}%, 2.7rem)` }}
                   onClick={() => onJumpToHighlight(highlight.startMs)}
                   title={`${highlight.label}: ${formatDuration(highlight.startMs)} - ${formatDuration(highlight.endMs)}`}
@@ -126,7 +156,7 @@ export function PlaybackControls({
                 <button
                   key={marker.id}
                   type="button"
-                  className={`absolute bottom-0.5 h-2.5 w-2.5 -translate-x-1/2 rounded-full border-2 shadow ${markerToneClassMap[marker.tone]}`}
+                  className={`absolute bottom-0.5 z-[3] h-2.5 w-2.5 -translate-x-1/2 rounded-full border-2 shadow ${markerToneClassMap[marker.tone]}`}
                   style={{ left: `calc(2px + ${markerPercent}%)` }}
                   onClick={() => onJumpToHighlight(marker.atMs)}
                   title={`${marker.label} at ${formatDuration(marker.atMs)}`}
@@ -135,7 +165,13 @@ export function PlaybackControls({
             })}
 
             <div
-              className="absolute bottom-1 top-1 w-0.5 bg-primary"
+              className="absolute bottom-1 top-1 z-[4] w-0.5 bg-primary"
+              style={{ left: `calc(2px + ${playheadPercent}%)` }}
+              aria-hidden="true"
+            />
+
+            <div
+              className="absolute top-1/2 z-[4] h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-primary-content bg-primary shadow"
               style={{ left: `calc(2px + ${playheadPercent}%)` }}
               aria-hidden="true"
             />
@@ -146,18 +182,6 @@ export function PlaybackControls({
             <span>{formatDuration(durationSafe * 0.5)}</span>
             <span>{formatDuration(durationMs)}</span>
           </div>
-
-          <input
-            className="range range-primary"
-            type="range"
-            min={0}
-            max={durationSafe}
-            step={1}
-            value={Math.min(currentTimeMs, durationMs)}
-            onChange={(event) => onSeek(Number(event.target.value))}
-            disabled={!canPlay}
-            aria-label="Flight timeline"
-          />
 
           {timelineMarkers.length > 0 ? (
             <div className="flex flex-wrap gap-1">

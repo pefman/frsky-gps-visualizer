@@ -6,7 +6,7 @@ import { PlaybackControls } from './components/PlaybackControls'
 import { TelemetryPanel } from './components/TelemetryPanel'
 import { buildFlightPath } from './lib/buildFlightPath'
 import { createDemoFlightLog } from './lib/demoFlight'
-import { clamp, sampleFrameAtTime } from './lib/playback'
+import { clamp, DEFAULT_INTERPOLATION_SETTINGS, sampleFrameAtTime } from './lib/playback'
 import { parseFrskyCsv } from './lib/parseFrskyCsv'
 import { buildTimelineHighlights, buildTimelineMarkers } from './lib/timelineHighlights'
 import type { ParsedFlightLog } from './types'
@@ -20,9 +20,10 @@ function App() {
   const [playheadMs, setPlayheadMs] = useState(0)
   const [showTrailLines, setShowTrailLines] = useState(false)
   const [motionSmoothing, setMotionSmoothing] = useState(0)
+  const [interpolationSettings, setInterpolationSettings] = useState(DEFAULT_INTERPOLATION_SETTINGS)
 
   const durationMs = flightLog?.summary.durationMs ?? 0
-  const currentFrame = flightLog ? sampleFrameAtTime(flightLog.frames, playheadMs) : null
+  const currentFrame = flightLog ? sampleFrameAtTime(flightLog.frames, playheadMs, interpolationSettings) : null
   const timelineHighlights = useMemo(() => buildTimelineHighlights(flightLog), [flightLog])
   const timelineMarkers = useMemo(
     () => buildTimelineMarkers(flightLog, timelineHighlights),
@@ -83,6 +84,7 @@ function App() {
 
       setFlightLog(parsed)
       setPlayheadMs(0)
+      setIsPlaying(true)
     } catch (error) {
       setFlightLog(null)
       setPlayheadMs(0)
@@ -190,6 +192,39 @@ function App() {
     },
   ]
 
+  const interpolatedChannels = [
+    { key: 'position', label: 'Position X/Y/Z' },
+    { key: 'heading', label: 'Heading' },
+    { key: 'speed', label: 'Speed' },
+    { key: 'altitude', label: 'Altitude' },
+    { key: 'roll', label: 'Roll' },
+    { key: 'pitch', label: 'Pitch' },
+    { key: 'throttle', label: 'Throttle' },
+    { key: 'rudder', label: 'Rudder' },
+    { key: 'elevator', label: 'Elevator' },
+    { key: 'aileron', label: 'Aileron' },
+  ] as const
+
+  function handleInterpolationToggle(key: keyof typeof interpolationSettings) {
+    setInterpolationSettings((current) => ({
+      ...current,
+      [key]: !current[key],
+    }))
+  }
+
+  function handleResetInterpolationSettings() {
+    setInterpolationSettings(DEFAULT_INTERPOLATION_SETTINGS)
+  }
+
+  const activeInterpolationCount = interpolatedChannels.filter(({ key }) => interpolationSettings[key]).length
+
+  const exactChannels = [
+    'RSSI 900M',
+    'RSSI 2.4G',
+    'Frame index',
+    'Source timestamps',
+  ]
+
   return (
     <main className="mx-auto flex w-full max-w-[1880px] flex-col gap-5 p-3 md:p-5">
       <section className="card border border-base-300 bg-base-100/90 shadow-xl">
@@ -221,28 +256,6 @@ function App() {
 
       <section className="grid items-start gap-5 xl:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)_minmax(15rem,19rem)]">
         <aside className="grid gap-3 md:grid-cols-2 xl:flex xl:flex-col">
-          <section className="card border border-base-300 bg-base-100/90 shadow-lg" aria-label="Motion smoothing">
-            <div className="card-body gap-3 p-4">
-              <div className="flex items-center justify-between gap-3">
-              <div>
-                  <p className="text-[0.6rem] font-semibold uppercase tracking-[0.16em] text-primary">Motion filter</p>
-                  <h2 className="text-lg font-bold text-base-content">Smoothing</h2>
-                </div>
-                <strong className="text-base font-semibold text-base-content">{Math.round(motionSmoothing * 100)}%</strong>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.01}
-                value={motionSmoothing}
-                onChange={(event) => setMotionSmoothing(Number(event.target.value))}
-                className="range range-primary range-sm"
-              />
-              <p className="text-xs text-base-content/70">0% is raw motion. Increase to smooth all aircraft movement and attitude.</p>
-            </div>
-          </section>
-
           <section className="card border border-base-300 bg-base-100/90 shadow-lg">
             <div className="card-body gap-3 p-4">
               <div>
@@ -257,6 +270,46 @@ function App() {
                     <strong className="text-sm font-semibold text-base-content">{card.value}</strong>
                   </article>
                 ))}
+              </div>
+            </div>
+          </section>
+
+          <section className="card border border-base-300 bg-base-100/90 shadow-lg">
+            <div className="card-body gap-3 p-4">
+              <div>
+                <p className="text-[0.6rem] font-semibold uppercase tracking-[0.16em] text-primary">Playback math</p>
+                <h2 className="text-lg font-bold text-base-content">Interpolated channels</h2>
+                <p className="text-xs text-base-content/70">Enabled {activeInterpolationCount} of {interpolatedChannels.length}</p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                {interpolatedChannels.map(({ key, label }) => (
+                  <label key={key} className="rounded-box border border-base-300 bg-base-200/60 p-2.5">
+                    <span className="flex items-start justify-between gap-2">
+                      <span>
+                        <strong className="block text-sm font-semibold text-base-content">{label}</strong>
+                        <span className="mt-0.5 block text-[11px] text-base-content/65">
+                          {interpolationSettings[key] ? 'Interpolated' : 'Exact source frame'}
+                        </span>
+                      </span>
+                      <input
+                        type="checkbox"
+                        className="toggle toggle-sm"
+                        checked={interpolationSettings[key]}
+                        onChange={() => handleInterpolationToggle(key)}
+                      />
+                    </span>
+                  </label>
+                ))}
+              </div>
+
+              <button type="button" className="btn btn-ghost btn-xs self-start" onClick={handleResetInterpolationSettings}>
+                Reset to defaults
+              </button>
+
+              <div className="rounded-box border border-base-300 bg-base-200/50 p-2.5 text-xs text-base-content/75">
+                <strong className="block text-base-content">Exact (not interpolated)</strong>
+                <span>{exactChannels.join(', ')}.</span>
               </div>
             </div>
           </section>
@@ -309,10 +362,12 @@ function App() {
               durationMs={durationMs}
               isPlaying={isPlaying}
               playbackRate={playbackRate}
+              motionSmoothing={motionSmoothing}
               timelineHighlights={timelineHighlights}
               timelineMarkers={timelineMarkers}
               onPlayPause={handlePlayPause}
               onRestart={handleRestart}
+              onMotionSmoothingChange={setMotionSmoothing}
               onSeek={handleSeek}
               onJumpToHighlight={handleJumpToHighlight}
               onPlaybackRateChange={setPlaybackRate}
