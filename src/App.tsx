@@ -19,6 +19,7 @@ function App() {
   const [playbackRate, setPlaybackRate] = useState(1)
   const [playheadMs, setPlayheadMs] = useState(0)
   const [showTrailLines, setShowTrailLines] = useState(false)
+  const [showPathTrail, setShowPathTrail] = useState(false)
   const [motionSmoothing, setMotionSmoothing] = useState(0)
   const [interpolationSettings, setInterpolationSettings] = useState(DEFAULT_INTERPOLATION_SETTINGS)
 
@@ -212,11 +213,22 @@ function App() {
     }))
   }
 
+  function handleToggleAllInterpolation(enabled: boolean) {
+    setInterpolationSettings((current) => {
+      const next = { ...current }
+      for (const { key } of interpolatedChannels) {
+        next[key] = enabled
+      }
+      return next
+    })
+  }
+
   function handleResetInterpolationSettings() {
     setInterpolationSettings(DEFAULT_INTERPOLATION_SETTINGS)
   }
 
   const activeInterpolationCount = interpolatedChannels.filter(({ key }) => interpolationSettings[key]).length
+  const allInterpolationEnabled = activeInterpolationCount === interpolatedChannels.length
 
   const exactChannels = [
     'RSSI 900M',
@@ -282,6 +294,23 @@ function App() {
                 <p className="text-xs text-base-content/70">Enabled {activeInterpolationCount} of {interpolatedChannels.length}</p>
               </div>
 
+              <label className="rounded-box border border-base-300 bg-base-200/60 p-2.5">
+                <span className="flex items-center justify-between gap-2">
+                  <span>
+                    <strong className="block text-sm font-semibold text-base-content">Interpolate all</strong>
+                    <span className="mt-0.5 block text-[11px] text-base-content/65">
+                      Toggle every channel below at once
+                    </span>
+                  </span>
+                  <input
+                    type="checkbox"
+                    className="toggle toggle-sm"
+                    checked={allInterpolationEnabled}
+                    onChange={(event) => handleToggleAllInterpolation(event.target.checked)}
+                  />
+                </span>
+              </label>
+
               <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                 {interpolatedChannels.map(({ key, label }) => (
                   <label key={key} className="rounded-box border border-base-300 bg-base-200/60 p-2.5">
@@ -322,13 +351,6 @@ function App() {
                 <p className="text-[0.6rem] font-semibold uppercase tracking-[0.16em] text-primary">3D View</p>
                 <h2 className="text-lg font-bold text-base-content">Pilot view</h2>
               </div>
-              <button
-                type="button"
-                className={`btn btn-sm ${showTrailLines ? 'btn-primary' : 'btn-outline'}`}
-                onClick={() => setShowTrailLines((current) => !current)}
-              >
-                {showTrailLines ? 'Hide lines' : 'Show lines'}
-              </button>
             </div>
 
             {flightLog ? (
@@ -336,6 +358,9 @@ function App() {
                 currentFrame={currentFrame}
                 frames={flightLog.frames}
                 showTrail={showTrailLines}
+                showPathTrail={showPathTrail}
+                onToggleShowTrail={() => setShowTrailLines((current) => !current)}
+                onToggleShowPathTrail={() => setShowPathTrail((current) => !current)}
                 motionSmoothing={motionSmoothing}
               />
             ) : (

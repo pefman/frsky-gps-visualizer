@@ -182,6 +182,13 @@ function findPeakFrame(
   return frames.reduce((best, frame) => (score(frame) > score(best) ? frame : best), frames[0])
 }
 
+function findLowestFrame(
+  frames: TelemetryFrame[],
+  score: (frame: TelemetryFrame) => number,
+): TelemetryFrame {
+  return frames.reduce((best, frame) => (score(frame) < score(best) ? frame : best), frames[0])
+}
+
 export function buildTimelineMarkers(
   flightLog: ParsedFlightLog | null,
   highlights: TimelineHighlight[],
@@ -224,6 +231,22 @@ export function buildTimelineMarkers(
     atMs: peakAltitudeFrame.elapsedMs,
     tone: 'info',
   }, minimumGapMs)
+
+  const minRssi900MFrame = findLowestFrame(frames, (frame) => frame.rssi900MdB)
+  markers.push({
+    id: 'marker-min-rssi-900m',
+    label: `Lowest RSSI 900M ${minRssi900MFrame.rssi900MdB.toFixed(0)} dB`,
+    atMs: minRssi900MFrame.elapsedMs,
+    tone: 'warning',
+  })
+
+  const minRssi24GFrame = findLowestFrame(frames, (frame) => frame.rssi24GdB)
+  markers.push({
+    id: 'marker-min-rssi-24g',
+    label: `Lowest RSSI 2.4G ${minRssi24GFrame.rssi24GdB.toFixed(0)} dB`,
+    atMs: minRssi24GFrame.elapsedMs,
+    tone: 'warning',
+  })
 
   const maxRollFrame = findPeakFrame(frames, (frame) => Math.abs(frame.rollDeg))
   if (Math.abs(maxRollFrame.rollDeg) >= 75) {
@@ -294,5 +317,5 @@ export function buildTimelineMarkers(
       atMs: Math.max(0, Math.min(marker.atMs, durationMs)),
     }))
     .sort((a, b) => a.atMs - b.atMs)
-    .slice(0, 10)
+    .slice(0, 12)
 }

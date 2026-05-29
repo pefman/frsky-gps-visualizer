@@ -1,12 +1,16 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 
+import { findFrameIndexAtTime } from '../lib/playback'
 import type { TelemetryFrame } from '../types'
 
 interface FlightSceneProps {
   currentFrame: TelemetryFrame | null
   frames: TelemetryFrame[]
   showTrail: boolean
+  showPathTrail: boolean
+  onToggleShowTrail: () => void
+  onToggleShowPathTrail: () => void
   motionSmoothing: number
 }
 
@@ -14,18 +18,26 @@ interface SceneRefs {
   camera: THREE.PerspectiveCamera
   renderer: THREE.WebGLRenderer
   trail: THREE.Line
+  trailGlow: THREE.Line
   ground: THREE.Mesh
   grid: THREE.GridHelper
   originRing: THREE.Mesh
   aircraftYaw: THREE.Group
   aircraftPitch: THREE.Group
   aircraftRoll: THREE.Group
+  pathTrail: THREE.Line
+  pathTrailGlow: THREE.Line
 }
 
 const PILOT_CAMERA_DISTANCE = 5
 const PILOT_CAMERA_HEIGHT = 2
 const PILOT_LOOK_LIFT = 0.9
+const PILOT_CAMERA_BASE_FOV = 48
+const SEGMENT_LENGTH_M = 10
 const AIRCRAFT_MARKER_RADIUS = 0.36
+const BASE_AIRCRAFT_WINGSPAN_M = 6.9
+const TARGET_AIRCRAFT_WINGSPAN_M = 1.5
+const AIRCRAFT_MODEL_SCALE = TARGET_AIRCRAFT_WINGSPAN_M / BASE_AIRCRAFT_WINGSPAN_M
 const TRIM_SPEED_THRESHOLD_KMH = 8
 const TRIM_ALTITUDE_WINDOW_M = 1.2
 const HIGH_CLOUD_LAYER_COUNT = 18
@@ -198,6 +210,10 @@ function createAircraftModel(): THREE.Group {
   )
   marker.position.set(0.26, 0.26, 0)
   aircraft.add(marker)
+
+  // Normalize this stylized model to the target real-world wingspan.
+  aircraft.scale.setScalar(AIRCRAFT_MODEL_SCALE)
+
   return aircraft
 }
 
@@ -248,14 +264,97 @@ function computeAttitudeTrim(frames: TelemetryFrame[]): { rollDeg: number; pitch
   }
 }
 
-export function FlightScene({ currentFrame, frames, showTrail, motionSmoothing }: FlightSceneProps) {
+function buildDistanceSegment(
+  frames: TelemetryFrame[],
+  currentElapsedMs: number,
+  startPoint: THREE.Vector3,
+  maxDistanceM: number,
+  direction: 'past' | 'future',
+  headingRad: number,
+): THREE.Vector3[] {
+  if (frames.length === 0) {
+    return [startPoint.clone(), startPoint.clone().add(new THREE.Vector3(0, 0.01, 0))]
+  }
+
+  const frameIndex = clamp(findFrameIndexAtTime(frames, currentElapsedMs), 0, frames.length - 1)
+  const points = [startPoint.clone()]
+  let remainingDistance = Math.max(0, maxDistanceM)
+  let anchorPoint = startPoint.clone()
+
+  if (direction === 'past') {
+    for (let index = frameIndex; index > 0 && remainingDistance > 0; index -= 1) {
+      const candidatePoint = getAircraftWorldPoint(frames[index - 1])
+      const segmentDistance = anchorPoint.distanceTo(candidatePoint)
+      if (segmentDistance < 1e-6) {
+        continue
+      }
+
+      if (segmentDistance >= remainingDistance) {
+        const cutoffPoint = anchorPoint.clone().lerp(candidatePoint, remainingDistance / segmentDistance)
+        points.push(cutoffPoint)
+        remainingDistance = 0
+        break
+      }
+
+      points.push(candidatePoint)
+      remainingDistance -= segmentDistance
+      anchorPoint = candidatePoint
+    }
+
+    const ordered = points.reverse()
+    if (ordered.length > 1) {
+      return ordered
+    }
+
+    const fallback = ordered[0].clone().add(new THREE.Vector3(-Math.cos(headingRad), 0, -Math.sin(headingRad)).multiplyScalar(maxDistanceM))
+    return [ordered[0], fallback]
+  }
+
+  for (let index = frameIndex + 1; index < frames.length && remainingDistance > 0; index += 1) {
+    const candidatePoint = getAircraftWorldPoint(frames[index])
+    const segmentDistance = anchorPoint.distanceTo(candidatePoint)
+    if (segmentDistance < 1e-6) {
+      continue
+    }
+
+    if (segmentDistance >= remainingDistance) {
+      const cutoffPoint = anchorPoint.clone().lerp(candidatePoint, remainingDistance / segmentDistance)
+      points.push(cutoffPoint)
+      remainingDistance = 0
+      break
+    }
+
+    points.push(candidatePoint)
+    remainingDistance -= segmentDistance
+    anchorPoint = candidatePoint
+  }
+
+  if (points.length > 1) {
+    return points
+  }
+
+  const fallback = points[0].clone().add(new THREE.Vector3(Math.cos(headingRad), 0, Math.sin(headingRad)).multiplyScalar(maxDistanceM))
+  return [points[0], fallback]
+}
+
+export function FlightScene({
+  currentFrame,
+  frames,
+  showTrail,
+  showPathTrail,
+  onToggleShowTrail,
+  onToggleShowPathTrail,
+  motionSmoothing,
+}: FlightSceneProps) {
   const mountRef = useRef<HTMLDivElement | null>(null)
   const sceneRef = useRef<SceneRefs | null>(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
   const attitudeTrim = useMemo(() => computeAttitudeTrim(frames), [frames])
   const currentFrameRef = useRef<TelemetryFrame | null>(null)
   const framesRef = useRef<TelemetryFrame[]>([])
   const groundLevelYRef = useRef(0)
   const motionSmoothingRef = useRef(0)
+  const cameraFovRef = useRef(PILOT_CAMERA_BASE_FOV)
   const attitudeTrimRef = useRef<{ rollDeg: number; pitchDeg: number }>({ rollDeg: 0, pitchDeg: 0 })
   const smoothedMotionRef = useRef<{
     point: THREE.Vector3
@@ -274,7 +373,7 @@ export function FlightScene({ currentFrame, frames, showTrail, motionSmoothing }
     scene.background = new THREE.Color('#7dc9ff')
     scene.fog = new THREE.Fog('#7dc9ff', 180, 520)
 
-    const camera = new THREE.PerspectiveCamera(48, container.clientWidth / container.clientHeight, 0.1, 1200)
+    const camera = new THREE.PerspectiveCamera(PILOT_CAMERA_BASE_FOV, container.clientWidth / container.clientHeight, 0.1, 1200)
     const renderer = new THREE.WebGLRenderer({ antialias: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.setSize(container.clientWidth, container.clientHeight)
@@ -329,10 +428,45 @@ export function FlightScene({ currentFrame, frames, showTrail, motionSmoothing }
 
     const trail = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, 0)]),
-      new THREE.LineBasicMaterial({ color: '#111111' }),
+      new THREE.LineBasicMaterial({ color: '#fb923c', transparent: true, opacity: 0.98, toneMapped: false }),
     )
     trail.visible = showTrail
     scene.add(trail)
+
+    const trailGlow = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, 0)]),
+      new THREE.LineBasicMaterial({
+        color: '#fdba74',
+        transparent: true,
+        opacity: 0.52,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false,
+      }),
+    )
+    trailGlow.visible = showTrail
+    scene.add(trailGlow)
+
+    const pathTrail = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, 0)]),
+      new THREE.LineBasicMaterial({ color: '#22d3ee', transparent: true, opacity: 0.98, toneMapped: false }),
+    )
+    pathTrail.visible = showPathTrail
+    scene.add(pathTrail)
+
+    const pathTrailGlow = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, 0)]),
+      new THREE.LineBasicMaterial({
+        color: '#67e8f9',
+        transparent: true,
+        opacity: 0.55,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false,
+      }),
+    )
+    pathTrailGlow.visible = showPathTrail
+    scene.add(pathTrailGlow)
 
     const handleResize = () => {
       if (!mountRef.current) {
@@ -350,19 +484,24 @@ export function FlightScene({ currentFrame, frames, showTrail, motionSmoothing }
       camera,
       renderer,
       trail,
+      trailGlow,
       ground,
       grid,
       originRing,
       aircraftYaw,
       aircraftPitch,
       aircraftRoll,
+      pathTrail,
+      pathTrailGlow,
     }
 
     let animationFrameId = 0
     let previousRenderTimestamp = 0
     const fallbackFrame = {
+      elapsedMs: 0,
       headingRad: 0,
       point: { x: 0, y: 0, z: 0 },
+      speedKmh: 0,
       pitchDeg: 0,
       rollDeg: 0,
     }
@@ -415,6 +554,34 @@ export function FlightScene({ currentFrame, frames, showTrail, motionSmoothing }
       const up = new THREE.Vector3(0, 1, 0)
       const cameraPosition = getPilotCameraPosition(startPoint, startFrame.headingRad ?? targetFrame.headingRad)
       const lookTarget = smoothedPoint.clone().add(up.clone().multiplyScalar(PILOT_LOOK_LIFT))
+      const cameraToTargetDistance = cameraPosition.distanceTo(lookTarget)
+
+      const segmentFrames = framesRef.current
+      const currentElapsedMs = typeof targetFrame.elapsedMs === 'number' ? targetFrame.elapsedMs : 0
+      const pathPoints = buildDistanceSegment(segmentFrames, currentElapsedMs, smoothedPoint, SEGMENT_LENGTH_M, 'past', smoothedHeading)
+      const trailPoints = buildDistanceSegment(segmentFrames, currentElapsedMs, smoothedPoint, SEGMENT_LENGTH_M, 'future', smoothedHeading)
+
+      pathTrail.geometry.dispose()
+      pathTrail.geometry = new THREE.BufferGeometry().setFromPoints(pathPoints)
+      pathTrailGlow.geometry.dispose()
+      pathTrailGlow.geometry = new THREE.BufferGeometry().setFromPoints(pathPoints)
+      trail.geometry.dispose()
+      trail.geometry = new THREE.BufferGeometry().setFromPoints(trailPoints)
+      trailGlow.geometry.dispose()
+      trailGlow.geometry = new THREE.BufferGeometry().setFromPoints(trailPoints)
+
+      // Auto-zoom adjusts field of view by target distance to keep the aircraft legible.
+      const autoZoomBaseFov = clamp(64 - cameraToTargetDistance * 0.1, 22, 62)
+      const speedBoost = clamp((Math.abs(targetFrame.speedKmh) - 80) * 0.05, 0, 10)
+      const bankBoost = clamp(Math.abs(smoothedRollDeg) * 0.045, 0, 6)
+      const pitchBoost = clamp(Math.abs(smoothedPitchDeg) * 0.025, 0, 4)
+      const dynamicTargetFov = autoZoomBaseFov + speedBoost + bankBoost + pitchBoost
+      const targetFov = clamp(dynamicTargetFov, 12, 68)
+      cameraFovRef.current = lerp(cameraFovRef.current, targetFov, 0.12)
+      if (Math.abs(camera.fov - cameraFovRef.current) > 0.01) {
+        camera.fov = cameraFovRef.current
+        camera.updateProjectionMatrix()
+      }
 
       aircraftYaw.position.copy(smoothedPoint)
       aircraftYaw.rotation.y = -smoothedHeading
@@ -436,7 +603,13 @@ export function FlightScene({ currentFrame, frames, showTrail, motionSmoothing }
       clouds.dispose()
       renderer.dispose()
       trail.geometry.dispose()
+      trailGlow.geometry.dispose()
+      pathTrail.geometry.dispose()
+      pathTrailGlow.geometry.dispose()
       ;(trail.material as THREE.Material).dispose()
+      ;(trailGlow.material as THREE.Material).dispose()
+      ;(pathTrail.material as THREE.Material).dispose()
+      ;(pathTrailGlow.material as THREE.Material).dispose()
       container.removeChild(renderer.domElement)
       sceneRef.current = null
     }
@@ -454,14 +627,21 @@ export function FlightScene({ currentFrame, frames, showTrail, motionSmoothing }
     refs.grid.position.y = groundLevelY + 0.02
     refs.originRing.position.y = groundLevelY + 0.06
 
-    const step = Math.max(1, Math.ceil(frames.length / 900))
-    const sampledPoints = frames
-      .filter((_, index) => index % step === 0 || index === frames.length - 1)
-      .map((frame) => getAircraftWorldPoint(frame))
-
     refs.trail.geometry.dispose()
     refs.trail.geometry = new THREE.BufferGeometry().setFromPoints(
-      sampledPoints.length > 1 ? sampledPoints : [new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, 0)],
+      [new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, 0)],
+    )
+    refs.trailGlow.geometry.dispose()
+    refs.trailGlow.geometry = new THREE.BufferGeometry().setFromPoints(
+      [new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, 0)],
+    )
+    refs.pathTrail.geometry.dispose()
+    refs.pathTrail.geometry = new THREE.BufferGeometry().setFromPoints(
+      [new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, 0)],
+    )
+    refs.pathTrailGlow.geometry.dispose()
+    refs.pathTrailGlow.geometry = new THREE.BufferGeometry().setFromPoints(
+      [new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, 0)],
     )
     smoothedMotionRef.current = null
   }, [frames])
@@ -473,7 +653,18 @@ export function FlightScene({ currentFrame, frames, showTrail, motionSmoothing }
     }
 
     refs.trail.visible = showTrail
+    refs.trailGlow.visible = showTrail
   }, [showTrail])
+
+  useEffect(() => {
+    const refs = sceneRef.current
+    if (!refs) {
+      return
+    }
+
+    refs.pathTrail.visible = showPathTrail
+    refs.pathTrailGlow.visible = showPathTrail
+  }, [showPathTrail])
 
   useEffect(() => {
     currentFrameRef.current = currentFrame
@@ -482,5 +673,65 @@ export function FlightScene({ currentFrame, frames, showTrail, motionSmoothing }
     attitudeTrimRef.current = attitudeTrim
   }, [attitudeTrim.pitchDeg, attitudeTrim.rollDeg, currentFrame, frames, motionSmoothing])
 
-  return <div className="scene-view" ref={mountRef} />
+  useEffect(() => {
+    const updateFullscreenState = () => {
+      const container = mountRef.current
+      setIsFullscreen(Boolean(container && document.fullscreenElement === container))
+    }
+
+    document.addEventListener('fullscreenchange', updateFullscreenState)
+    updateFullscreenState()
+
+    return () => {
+      document.removeEventListener('fullscreenchange', updateFullscreenState)
+    }
+  }, [])
+
+  async function handleToggleFullscreen() {
+    const container = mountRef.current
+    if (!container) {
+      return
+    }
+
+    if (document.fullscreenElement === container) {
+      await document.exitFullscreen()
+      return
+    }
+
+    await container.requestFullscreen()
+  }
+
+  return (
+    <div className="scene-view relative" ref={mountRef}>
+      <div className="absolute right-2 top-2 z-10 flex gap-1.5">
+        <button
+          type="button"
+          className={`btn btn-xs ${showTrail ? 'btn-primary' : 'btn-outline'}`}
+          onClick={onToggleShowTrail}
+          title="Toggle 10 meter forward trail"
+        >
+          Trail
+        </button>
+        <button
+          type="button"
+          className={`btn btn-xs ${showPathTrail ? 'btn-primary' : 'btn-outline'}`}
+          onClick={onToggleShowPathTrail}
+          title="Toggle 10 meter path trail"
+        >
+          Path
+        </button>
+        <span className="rounded-box border border-base-300 bg-base-100/85 px-2 py-1 text-[11px] font-semibold text-base-content/80">
+          Autozoom
+        </span>
+        <button
+          type="button"
+          className={`btn btn-xs ${isFullscreen ? 'btn-primary' : 'btn-outline'}`}
+          onClick={handleToggleFullscreen}
+          title="Toggle fullscreen viewport"
+        >
+          Fullscreen
+        </button>
+      </div>
+    </div>
+  )
 }
