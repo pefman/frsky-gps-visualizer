@@ -1,0 +1,70 @@
+:root {
+  font-family: 'Avenir Next', 'Helvetica Neue', sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #2f241a;
+  background:
+    radial-gradient(circle at top left, rgba(14, 165, 233, 0.18), transparent 28%),
+    radial-gradient(circle at top right, rgba(249, 115, 22, 0.16), transparent 26%),
+    linear-gradient(180deg, #fcf6ee 0%, #f8efe3 100%);
+  --heading: #1f160f;
+  --muted: #68594e;
+  --accent: #b45309;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+h1,
+h2 {
+  color: var(--heading);
+  font-family: 'Avenir Next Condensed', 'Avenir Next', 'Helvetica Neue', sans-serif;
+  line-height: 0.98;
+}
+
+h1 {
+  max-width: 14ch;
+  font-size: clamp(2.5rem, 6vw, 4.8rem);
+  letter-spacing: -0.05em;
+}
+
+h2 {
+  font-size: 1.3rem;
+  letter-spacing: -0.03em;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+a {
+  color: inherit;
+}
