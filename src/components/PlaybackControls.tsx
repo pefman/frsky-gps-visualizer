@@ -7,12 +7,10 @@ interface PlaybackControlsProps {
   durationMs: number
   isPlaying: boolean
   playbackRate: number
-  motionSmoothing: number
   timelineHighlights: TimelineHighlight[]
   timelineMarkers: TimelineMarker[]
   onPlayPause: () => void
   onRestart: () => void
-  onMotionSmoothingChange: (value: number) => void
   onSeek: (value: number) => void
   onJumpToHighlight: (value: number) => void
   onPlaybackRateChange: (value: number) => void
@@ -26,12 +24,10 @@ export function PlaybackControls({
   durationMs,
   isPlaying,
   playbackRate,
-  motionSmoothing,
   timelineHighlights,
   timelineMarkers,
   onPlayPause,
   onRestart,
-  onMotionSmoothingChange,
   onSeek,
   onJumpToHighlight,
   onPlaybackRateChange,
@@ -74,20 +70,6 @@ export function PlaybackControls({
           <button type="button" className="btn btn-outline btn-sm" onClick={onRestart} disabled={!canPlay}>
             Restart
           </button>
-
-          <label className="flex items-center gap-2 text-xs text-base-content/70">
-            <span>Smoothing</span>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.01}
-              value={motionSmoothing}
-              onChange={(event) => onMotionSmoothingChange(Number(event.target.value))}
-              className="range range-primary range-xs w-24"
-            />
-            <span className="w-8 text-right">{Math.round(motionSmoothing * 100)}%</span>
-          </label>
 
           <label className="ml-auto flex items-center gap-2 text-xs text-base-content/70">
             <span>Speed</span>

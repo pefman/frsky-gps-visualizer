@@ -6,17 +6,91 @@ import { PlaybackControls } from './components/PlaybackControls'
 import { TelemetryPanel } from './components/TelemetryPanel'
 import { buildFlightPath } from './lib/buildFlightPath'
 import { createDemoFlightLog } from './lib/demoFlight'
-import {
-  buildInterpolatedPlaybackFrames,
-  clamp,
-  MAX_INTERPOLATION_FPS,
-  MIN_INTERPOLATION_FPS,
-  findFrameIndexAtTime,
-  sampleFrameAtTime,
-} from './lib/playback'
+import { clamp, findFrameIndexAtTime } from './lib/playback'
 import { parseFrskyCsv } from './lib/parseFrskyCsv'
 import { buildTimelineHighlights, buildTimelineMarkers } from './lib/timelineHighlights'
-import type { ParsedFlightLog } from './types'
+import type { ParsedFlightLog, TelemetryFrame } from './types'
+
+interface TelemetryTimingItem {
+  label: string
+  ageMs: number
+  detail?: string
+}
+
+function angleDeltaDeg(left: number, right: number): number {
+  const leftRad = (left * Math.PI) / 180
+  const rightRad = (right * Math.PI) / 180
+  return Math.abs(Math.atan2(Math.sin(leftRad - rightRad), Math.cos(leftRad - rightRad)) * (180 / Math.PI))
+}
+
+function msSinceLastChange(
+  frames: TelemetryFrame[],
+  currentIndex: number,
+  isDifferent: (current: TelemetryFrame, previous: TelemetryFrame) => boolean,
+): number {
+  if (frames.length === 0 || currentIndex <= 0) {
+    return 0
+  }
+
+  const currentFrame = frames[currentIndex]
+  let streakStartIndex = currentIndex
+
+  while (streakStartIndex > 0) {
+    const previousFrame = frames[streakStartIndex - 1]
+    if (isDifferent(currentFrame, previousFrame)) {
+      break
+    }
+
+    streakStartIndex -= 1
+  }
+
+  return Math.max(0, currentFrame.elapsedMs - frames[streakStartIndex].elapsedMs)
+}
+
+function buildTelemetryTimingBar(
+  frames: TelemetryFrame[],
+  currentIndex: number,
+): TelemetryTimingItem[] {
+  if (frames.length === 0 || currentIndex < 0 || currentIndex >= frames.length) {
+    return []
+  }
+
+  const currentFrame = frames[currentIndex]
+  const previousFrame = currentIndex > 0 ? frames[currentIndex - 1] : null
+  const frameStepMs = previousFrame ? Math.max(0, currentFrame.elapsedMs - previousFrame.elapsedMs) : 0
+  const gpsStepM = previousFrame
+    ? Math.hypot(currentFrame.point.x - previousFrame.point.x, currentFrame.point.z - previousFrame.point.z)
+    : 0
+  const altitudeStepM = previousFrame ? Math.abs(currentFrame.point.y - previousFrame.point.y) : 0
+
+  return [
+    {
+      label: 'Frame step',
+      ageMs: frameStepMs,
+      detail: `${frameStepMs > 0 ? (1000 / frameStepMs).toFixed(1) : '0.0'} Hz`,
+    },
+    {
+      label: 'GPS position age',
+      ageMs: msSinceLastChange(
+        frames,
+        currentIndex,
+        (current, previous) =>
+          Math.abs(current.point.x - previous.point.x) > 0.01 ||
+          Math.abs(current.point.z - previous.point.z) > 0.01,
+      ),
+      detail: `${gpsStepM.toFixed(2)} m step`,
+    },
+    {
+      label: 'GPS altitude age',
+      ageMs: msSinceLastChange(frames, currentIndex, (current, previous) => Math.abs(current.point.y - previous.point.y) > 0.01),
+      detail: `${altitudeStepM.toFixed(2)} m step`,
+    },
+    {
+      label: 'Heading age',
+      ageMs: msSinceLastChange(frames, currentIndex, (current, previous) => angleDeltaDeg(current.headingRad * (180 / Math.PI), previous.headingRad * (180 / Math.PI)) > 0.05),
+    },
+  ]
+}
 
 function App() {
   const [errorMessage, setErrorMessage] = useState('')
@@ -27,25 +101,23 @@ function App() {
   const [playheadMs, setPlayheadMs] = useState(0)
   const [showTrailLines, setShowTrailLines] = useState(false)
   const [showPathTrail, setShowPathTrail] = useState(false)
-  const [motionSmoothing, setMotionSmoothing] = useState(0)
-  const [interpolationFps, setInterpolationFps] = useState(MAX_INTERPOLATION_FPS)
 
   const durationMs = flightLog?.summary.durationMs ?? 0
-  const playbackFrames = useMemo(
-    () => (flightLog ? buildInterpolatedPlaybackFrames(flightLog.frames, interpolationFps) : []),
-    [flightLog, interpolationFps],
+  const currentFrameIndex = useMemo(
+    () => (flightLog ? findFrameIndexAtTime(flightLog.frames, playheadMs) : -1),
+    [flightLog, playheadMs],
   )
   const currentFrame = useMemo(() => {
     if (!flightLog) {
       return null
     }
 
-    if (interpolationFps === 0) {
-      return flightLog.frames[findFrameIndexAtTime(flightLog.frames, playheadMs)] ?? null
-    }
-
-    return playbackFrames.length > 0 ? sampleFrameAtTime(playbackFrames, playheadMs) : null
-  }, [flightLog, interpolationFps, playbackFrames, playheadMs])
+    return flightLog.frames[findFrameIndexAtTime(flightLog.frames, playheadMs)] ?? null
+  }, [flightLog, playheadMs])
+  const telemetryTimingBar = useMemo(
+    () => (flightLog ? buildTelemetryTimingBar(flightLog.frames, currentFrameIndex) : []),
+    [currentFrameIndex, flightLog],
+  )
   const timelineHighlights = useMemo(() => buildTimelineHighlights(flightLog), [flightLog])
   const timelineMarkers = useMemo(
     () => buildTimelineMarkers(flightLog, timelineHighlights),
@@ -151,8 +223,6 @@ function App() {
     setIsPlaying(false)
     setFlightLog(createDemoFlightLog())
     setPlayheadMs(0)
-    setMotionSmoothing(1)
-    setInterpolationFps(MAX_INTERPOLATION_FPS)
     setIsPlaying(true)
   }
 
@@ -215,13 +285,6 @@ function App() {
     },
   ]
 
-  const exactChannels = [
-    'RSSI 900M',
-    'RSSI 2.4G',
-    'Frame index',
-    'Source timestamps',
-  ]
-
   return (
     <main className="mx-auto flex w-full max-w-[1880px] flex-col gap-5 p-3 md:p-5">
       <section className="card border border-base-300 bg-base-100/90 shadow-xl">
@@ -275,42 +338,13 @@ function App() {
             <div className="card-body gap-3 p-4">
               <div>
                 <p className="text-[0.6rem] font-semibold uppercase tracking-[0.16em] text-primary">Playback math</p>
-                <h2 className="text-lg font-bold text-base-content">Interpolation target</h2>
-                <p className="text-xs text-base-content/70">0 = exact source frames, 60 = max target smoothness</p>
+                <h2 className="text-lg font-bold text-base-content">Raw source frames</h2>
+                <p className="text-xs text-base-content/70">Playback uses exact CSV rows only. No interpolation or smoothing is applied.</p>
               </div>
 
-              <label className="rounded-box border border-base-300 bg-base-200/60 p-2.5">
-                <span className="flex items-center justify-between gap-3 text-xs text-base-content/70">
-                  <span className="min-w-0">
-                    <strong className="block text-sm font-semibold text-base-content">Interpolation FPS</strong>
-                    <span className="mt-0.5 block">Resamples the log up to 60 fps, independent of source density.</span>
-                  </span>
-                  <span className="shrink-0 rounded-full border border-base-300 bg-base-100 px-2 py-0.5 text-[11px] font-semibold text-base-content">
-                    {interpolationFps === 0 ? 'Exact' : `${interpolationFps} fps`}
-                  </span>
-                </span>
-
-                <input
-                  type="range"
-                  min={MIN_INTERPOLATION_FPS}
-                  max={MAX_INTERPOLATION_FPS}
-                  step={1}
-                  value={interpolationFps}
-                  onChange={(event) => setInterpolationFps(Number(event.target.value))}
-                  className="range range-primary mt-3"
-                  aria-label="Interpolation FPS"
-                />
-
-                <div className="mt-1 flex justify-between text-[10px] text-base-content/55">
-                  <span>0</span>
-                  <span>30</span>
-                  <span>60</span>
-                </div>
-              </label>
-
               <div className="rounded-box border border-base-300 bg-base-200/50 p-2.5 text-xs text-base-content/75">
-                <strong className="block text-base-content">Always exact</strong>
-                <span>{exactChannels.join(', ')}.</span>
+                <strong className="block text-base-content">Telemetry mode</strong>
+                <span>Position, heading, attitude, controls, and RSSI are read directly from source frames.</span>
               </div>
             </div>
           </section>
@@ -333,8 +367,6 @@ function App() {
                 showPathTrail={showPathTrail}
                 onToggleShowTrail={() => setShowTrailLines((current) => !current)}
                 onToggleShowPathTrail={() => setShowPathTrail((current) => !current)}
-                motionSmoothing={motionSmoothing}
-                onMotionSmoothingChange={setMotionSmoothing}
               />
             ) : (
               <div className="scene-view flex items-center justify-center">
@@ -360,12 +392,10 @@ function App() {
               durationMs={durationMs}
               isPlaying={isPlaying}
               playbackRate={playbackRate}
-              motionSmoothing={motionSmoothing}
               timelineHighlights={timelineHighlights}
               timelineMarkers={timelineMarkers}
               onPlayPause={handlePlayPause}
               onRestart={handleRestart}
-              onMotionSmoothingChange={setMotionSmoothing}
               onSeek={handleSeek}
               onJumpToHighlight={handleJumpToHighlight}
               onPlaybackRateChange={setPlaybackRate}
@@ -376,6 +406,33 @@ function App() {
         <aside className="grid gap-3">
           <TelemetryPanel currentFrame={currentFrame} flightLog={flightLog} />
         </aside>
+      </section>
+
+      <section className="card border border-base-300 bg-base-100/90 shadow-lg">
+        <div className="card-body gap-2 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[0.6rem] font-semibold uppercase tracking-[0.16em] text-primary">Telemetry timing</p>
+            <span className="text-[11px] text-base-content/65">
+              {flightLog ? `Current frame ${Math.max(0, currentFrameIndex) + 1}/${flightLog.frames.length}` : 'Load a flight to inspect per-channel timing'}
+            </span>
+          </div>
+
+          {flightLog ? (
+            <div className="overflow-x-auto">
+              <div className="flex min-w-max gap-1.5 pb-1">
+                {telemetryTimingBar.map((item) => (
+                  <div key={item.label} className="rounded-box border border-base-300 bg-base-200/60 px-2.5 py-1.5 text-xs">
+                    <span className="block text-[10px] text-base-content/65">{item.label}</span>
+                    <strong className="text-base-content">{Math.round(item.ageMs)} ms</strong>
+                    {item.detail ? <span className="block text-[10px] text-base-content/60">{item.detail}</span> : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-base-content/65">No telemetry loaded.</p>
+          )}
+        </div>
       </section>
     </main>
   )

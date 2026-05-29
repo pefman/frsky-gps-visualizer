@@ -11,8 +11,8 @@ function normalizeControl(value: number): number {
 }
 
 function withAltitudeOffset(
-    frame: TelemetryFrame, minAltitudeM: number): number {
-  return frame.altitudeM - minAltitudeM;
+    frame: TelemetryFrame, baselineAltitudeM: number): number {
+  return frame.altitudeM - baselineAltitudeM;
 }
 
 function buildGpsFrames(frames: TelemetryFrame[]): TelemetryFrame[] {
@@ -25,13 +25,13 @@ function buildGpsFrames(frames: TelemetryFrame[]): TelemetryFrame[] {
     return frames;
   }
 
-  const minAltitudeM = Math.min(...frames.map((frame) => frame.altitudeM));
+  const baselineAltitudeM = frames[0]?.altitudeM ?? 0;
   const originLatitudeRad = degreesToRadians(firstGpsFrame.gps.latitude);
   const originLongitudeRad = degreesToRadians(firstGpsFrame.gps.longitude);
   let previousHeading = 0;
   let previousPoint = {
     x: 0,
-    y: withAltitudeOffset(firstGpsFrame, minAltitudeM),
+    y: withAltitudeOffset(firstGpsFrame, baselineAltitudeM),
     z: 0,
   };
 
@@ -41,7 +41,7 @@ function buildGpsFrames(frames: TelemetryFrame[]): TelemetryFrame[] {
         ...frame,
         point: {
           ...previousPoint,
-          y: withAltitudeOffset(frame, minAltitudeM),
+          y: withAltitudeOffset(frame, baselineAltitudeM),
         },
         headingRad: previousHeading,
       };
@@ -55,7 +55,7 @@ function buildGpsFrames(frames: TelemetryFrame[]): TelemetryFrame[] {
     const z = deltaLatitude * EARTH_RADIUS_M;
     const point = {
       x,
-      y: withAltitudeOffset(frame, minAltitudeM),
+      y: withAltitudeOffset(frame, baselineAltitudeM),
       z,
     };
     const deltaX = point.x - previousPoint.x;
@@ -76,7 +76,7 @@ function buildGpsFrames(frames: TelemetryFrame[]): TelemetryFrame[] {
 }
 
 function buildEstimatedFrames(frames: TelemetryFrame[]): TelemetryFrame[] {
-  const minAltitudeM = Math.min(...frames.map((frame) => frame.altitudeM));
+  const baselineAltitudeM = frames[0]?.altitudeM ?? 0;
   let x = 0;
   let z = 0;
   let headingRad = Math.PI / 10;
@@ -99,7 +99,7 @@ function buildEstimatedFrames(frames: TelemetryFrame[]): TelemetryFrame[] {
       ...frame,
       point: {
         x,
-        y: withAltitudeOffset(frame, minAltitudeM),
+        y: withAltitudeOffset(frame, baselineAltitudeM),
         z,
       },
       headingRad,
