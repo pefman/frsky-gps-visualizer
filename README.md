@@ -1,73 +1,71 @@
-# React + TypeScript + Vite
+# FrSky GPS Flight Visualizer
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Web app for replaying FrSky telemetry logs in a 3D pilot view.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Upload FrSky CSV logs and parse telemetry (speed, altitude, attitude, controls, GPS).
+- 3D aircraft playback with pilot camera framing.
+- Motion smoothing slider (0% to 100%).
+- Optional flight trail line.
+- Demo mode loads a real extracted segment and starts playback automatically.
+- Ground plane is green and altitude is calibrated so y=0 is the lowest CSV altitude.
 
-## React Compiler
+## Demo Behavior
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Click `Load demo` to:
 
-## Expanding the ESLint configuration
+- load `src/assets/demo-segment.csv`
+- set smoothing to 100%
+- jump playhead to start
+- auto-play immediately
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## Run Locally
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+Requirements:
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+- Node.js 20+
+- npm
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Install and run:
+
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Build production bundle:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run build
 ```
+
+Preview production build:
+
+```bash
+npm run preview
+```
+
+## CSV Notes
+
+- GPS mode is used when latitude/longitude columns are available.
+- If GPS is missing, estimated path mode is used from speed and control inputs.
+- Vertical calibration uses the minimum altitude in the loaded file as ground level.
+
+## Deploy (Vibekoded)
+
+This repository includes:
+
+- `Dockerfile` (multi-stage Node build + Nginx runtime)
+- `nginx.conf` (SPA fallback)
+- `.dockerignore`
+
+Deploy command:
+
+```bash
+vk app ship frsky-gps-visualizer
+```
+
+Current app URL:
+
+- https://frsky-gps-visualizer-1b2ad1ce.vibekoded.app

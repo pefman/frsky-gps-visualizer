@@ -22,6 +22,16 @@ const REQUIRED_COLUMNS =
           return Number.isFinite(parsed) ? parsed : 0
         }
 
+function toNullableNumber(value: string|undefined):
+    number|null {
+      if (!value) {
+        return null
+      }
+
+      const parsed = Number.parseFloat(value.trim())
+      return Number.isFinite(parsed) ? parsed : null
+    }
+
 function parseTimestamp(date: string, time: string):
     number {
       const parsed = Date.parse(`${date}T${time}`)
@@ -147,6 +157,79 @@ function normalizeFrames(rows: RawRow[]):
     }
     }
 
+function collectSummaryStats(rows: RawRow[], frames: TelemetryFrame[]) {
+  const sampleCount = frames.length
+  const averageFrameIntervalMs =
+      sampleCount > 1 ? frames.at(-1)!.elapsedMs / (sampleCount - 1) : 0
+  const frameIntervalMs = inferNominalStepMs(rows)
+  const frameRateHz = frameIntervalMs > 0 ? 1000 / frameIntervalMs : 0
+
+  let speedSum = 0
+  let speedCount = 0
+  let maxRollDeg = Number.NEGATIVE_INFINITY
+  let maxPitchDeg = Number.NEGATIVE_INFINITY
+  let minTxBatteryV = Number.POSITIVE_INFINITY
+  let minRxBatteryV = Number.POSITIVE_INFINITY
+  let minRssi900MdB = Number.POSITIVE_INFINITY
+  let minRssi24GdB = Number.POSITIVE_INFINITY
+
+  for (const row of rows) {
+    const speed = toNullableNumber(row['GPS speed(km/h)'])
+    if (speed !== null) {
+      speedSum += speed
+      speedCount += 1
+    }
+
+    const roll = toNullableNumber(row['R.angle(°)'])
+    if (roll !== null) {
+      maxRollDeg = Math.max(maxRollDeg, Math.abs(roll))
+    }
+
+    const pitch = toNullableNumber(row['P.angle(°)'])
+    if (pitch !== null) {
+      maxPitchDeg = Math.max(maxPitchDeg, Math.abs(pitch))
+    }
+
+    const txBattery = toNullableNumber(row['TxBat(V)'])
+    if (txBattery !== null) {
+      minTxBatteryV = Math.min(minTxBatteryV, txBattery)
+    }
+
+    const rxBattery = toNullableNumber(row['RxBatt(V)'])
+    if (rxBattery !== null) {
+      minRxBatteryV = Math.min(minRxBatteryV, rxBattery)
+    }
+
+    const rssi900 = toNullableNumber(row['RSSI 900M(dB)'])
+    if (rssi900 !== null) {
+      minRssi900MdB = Math.min(minRssi900MdB, rssi900)
+    }
+
+    const rssi24 = toNullableNumber(row['RSSI 2.4G(dB)'])
+    if (rssi24 !== null) {
+      minRssi24GdB = Math.min(minRssi24GdB, rssi24)
+    }
+  }
+
+  return {
+    sampleCount, averageFrameIntervalMs, frameIntervalMs, frameRateHz,
+        averageSpeedKmh: speedCount > 0 ? speedSum / speedCount : 0,
+        maxRollDeg: maxRollDeg === Number.NEGATIVE_INFINITY ? 0 : maxRollDeg,
+        maxPitchDeg: maxPitchDeg === Number.NEGATIVE_INFINITY ? 0 : maxPitchDeg,
+        minTxBatteryV: minTxBatteryV === Number.POSITIVE_INFINITY ?
+        0 :
+        minTxBatteryV,
+        minRxBatteryV: minRxBatteryV === Number.POSITIVE_INFINITY ?
+        0 :
+        minRxBatteryV,
+        minRssi900MdB: minRssi900MdB === Number.POSITIVE_INFINITY ?
+        0 :
+        minRssi900MdB,
+        minRssi24GdB: minRssi24GdB === Number.POSITIVE_INFINITY ? 0 :
+                                                                  minRssi24GdB,
+  }
+}
+
 export function parseFrskyCsv(csvText: string, fileName: string):
     ParsedFlightLog {
       const parsed = Papa.parse<RawRow>(csvText, {
@@ -166,18 +249,26 @@ export function parseFrskyCsv(csvText: string, fileName: string):
 
       const altitudes = frames.map((frame) => frame.altitudeM)
       const speeds = frames.map((frame) => frame.speedKmh)
-      const frameIntervalMs =
-          inferNominalStepMs(parsed.data.filter((row) => row.Date && row.Time))
-      const frameRateHz = frameIntervalMs > 0 ? 1000 / frameIntervalMs : 0
+      const summaryStats = collectSummaryStats(
+          parsed.data.filter((row) => row.Date && row.Time), frames)
 
       return {
         fileName, frames, mode, summary: {
+          sampleCount: summaryStats.sampleCount,
           durationMs: frames.at(-1)?.elapsedMs ?? 0,
-          frameIntervalMs,
-          frameRateHz,
+          frameIntervalMs: summaryStats.frameIntervalMs,
+          averageFrameIntervalMs: summaryStats.averageFrameIntervalMs,
+          frameRateHz: summaryStats.frameRateHz,
+          averageSpeedKmh: summaryStats.averageSpeedKmh,
           maxSpeedKmh: Math.max(...speeds),
+          maxRollDeg: summaryStats.maxRollDeg,
+          maxPitchDeg: summaryStats.maxPitchDeg,
           maxAltitudeM: Math.max(...altitudes),
           minAltitudeM: Math.min(...altitudes),
+          minTxBatteryV: summaryStats.minTxBatteryV,
+          minRxBatteryV: summaryStats.minRxBatteryV,
+          minRssi900MdB: summaryStats.minRssi900MdB,
+          minRssi24GdB: summaryStats.minRssi24GdB,
         },
       }
     }

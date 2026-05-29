@@ -1,5 +1,3 @@
-export type CameraPreset = 'chase'|'orbit'|'top'|'cockpit'
-
 export type PlaybackMode = 'estimated'|'gps'
 
 export interface FlightPoint {
@@ -28,12 +26,21 @@ export interface TelemetryFrame {
 }
 
 export interface FlightSummary {
+  sampleCount: number
   durationMs: number
   frameIntervalMs: number
+  averageFrameIntervalMs: number
   frameRateHz: number
+  averageSpeedKmh: number
   maxSpeedKmh: number
+  maxRollDeg: number
+  maxPitchDeg: number
   maxAltitudeM: number
   minAltitudeM: number
+  minTxBatteryV: number
+  minRxBatteryV: number
+  minRssi900MdB: number
+  minRssi24GdB: number
 }
 
 export interface ParsedFlightLog {

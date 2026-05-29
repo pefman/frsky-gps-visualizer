@@ -5,23 +5,23 @@ import { FlightScene } from './components/FlightScene'
 import { PlaybackControls } from './components/PlaybackControls'
 import { TelemetryPanel } from './components/TelemetryPanel'
 import { buildFlightPath } from './lib/buildFlightPath'
-import { clamp, findFrameIndexAtTime, sampleFrameAtTime } from './lib/playback'
+import { createDemoFlightLog } from './lib/demoFlight'
+import { clamp, sampleFrameAtTime } from './lib/playback'
 import { parseFrskyCsv } from './lib/parseFrskyCsv'
-import type { CameraPreset, ParsedFlightLog } from './types'
+import type { ParsedFlightLog } from './types'
 
 function App() {
-  const [cameraPreset, setCameraPreset] = useState<CameraPreset>('chase')
   const [errorMessage, setErrorMessage] = useState('')
   const [flightLog, setFlightLog] = useState<ParsedFlightLog | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
   const [playbackRate, setPlaybackRate] = useState(1)
   const [playheadMs, setPlayheadMs] = useState(0)
+  const [showTrailLines, setShowTrailLines] = useState(false)
+  const [motionSmoothing, setMotionSmoothing] = useState(0)
 
   const durationMs = flightLog?.summary.durationMs ?? 0
-  const currentFrameIndex = flightLog ? findFrameIndexAtTime(flightLog.frames, playheadMs) : 0
-  const currentFrame = flightLog?.frames[currentFrameIndex] ?? null
-  const sceneFrame = flightLog ? sampleFrameAtTime(flightLog.frames, playheadMs) : null
+  const currentFrame = flightLog ? sampleFrameAtTime(flightLog.frames, playheadMs) : null
 
   useEffect(() => {
     if (!isPlaying || !flightLog) {
@@ -77,7 +77,6 @@ function App() {
 
       setFlightLog(parsed)
       setPlayheadMs(0)
-      setCameraPreset('chase')
     } catch (error) {
       setFlightLog(null)
       setPlayheadMs(0)
@@ -108,7 +107,20 @@ function App() {
     setPlayheadMs(clamp(value, 0, durationMs))
   }
 
+  function handleLoadDemo() {
+    setErrorMessage('')
+    setIsPlaying(false)
+    setFlightLog(createDemoFlightLog())
+    setPlayheadMs(0)
+    setMotionSmoothing(1)
+    setIsPlaying(true)
+  }
+
   const summaryCards = [
+    {
+      label: 'Samples',
+      value: flightLog ? `${flightLog.summary.sampleCount}` : '--',
+    },
     {
       label: 'Duration',
       value: flightLog ? `${Math.round(flightLog.summary.durationMs / 1000)}s` : '--',
@@ -120,8 +132,40 @@ function App() {
         : '--',
     },
     {
+      label: 'Average interval',
+      value: flightLog ? `${flightLog.summary.averageFrameIntervalMs.toFixed(1)} ms` : '--',
+    },
+    {
+      label: 'Average speed',
+      value: flightLog ? `${flightLog.summary.averageSpeedKmh.toFixed(1)} km/h` : '--',
+    },
+    {
       label: 'Peak speed',
       value: flightLog ? `${flightLog.summary.maxSpeedKmh.toFixed(1)} km/h` : '--',
+    },
+    {
+      label: 'Max roll',
+      value: flightLog ? `${flightLog.summary.maxRollDeg.toFixed(1)}°` : '--',
+    },
+    {
+      label: 'Max pitch',
+      value: flightLog ? `${flightLog.summary.maxPitchDeg.toFixed(1)}°` : '--',
+    },
+    {
+      label: 'Tx battery',
+      value: flightLog ? `${flightLog.summary.minTxBatteryV.toFixed(2)} V` : '--',
+    },
+    {
+      label: 'Rx battery',
+      value: flightLog ? `${flightLog.summary.minRxBatteryV.toFixed(2)} V` : '--',
+    },
+    {
+      label: 'RSSI 900M',
+      value: flightLog ? `${flightLog.summary.minRssi900MdB.toFixed(0)} dB` : '--',
+    },
+    {
+      label: 'RSSI 2.4G',
+      value: flightLog ? `${flightLog.summary.minRssi24GdB.toFixed(0)} dB` : '--',
     },
     {
       label: 'Altitude band',
@@ -143,10 +187,19 @@ function App() {
         </div>
 
         <div className="upload-panel">
-          <label className="button button--primary button--file">
-            <input type="file" accept=".csv,text/csv" onChange={handleUpload} />
-            {isLoading ? 'Loading CSV...' : 'Upload flight CSV'}
-          </label>
+          <div className="upload-actions">
+            <label className="button button--primary button--file">
+              <input type="file" accept=".csv,text/csv" onChange={handleUpload} />
+              {isLoading ? 'Loading CSV...' : 'Upload flight CSV'}
+            </label>
+            <button
+              type="button"
+              className="button button--secondary"
+              onClick={handleLoadDemo}
+            >
+              Load demo
+            </button>
+          </div>
           <p className="upload-caption">
             {flightLog ? `Loaded ${flightLog.fileName}` : 'Pick a FrSky CSV exported from your radio.'}
           </p>
@@ -155,30 +208,7 @@ function App() {
       </section>
 
       <section className="content-grid">
-        <article className="scene-card">
-          <div className="scene-card__header">
-            <div>
-              <p className="eyebrow">3D View</p>
-              <h2>Flight path</h2>
-            </div>
-            <div className="camera-strip" role="group" aria-label="Camera presets">
-              {(['chase', 'cockpit', 'orbit', 'top'] as CameraPreset[]).map((preset) => (
-                <button
-                  key={preset}
-                  type="button"
-                  className={`camera-chip ${cameraPreset === preset ? 'camera-chip--active' : ''}`}
-                  onClick={() => setCameraPreset(preset)}
-                >
-                  {preset}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <FlightScene cameraPreset={cameraPreset} currentFrame={sceneFrame} frames={flightLog?.frames ?? []} />
-        </article>
-
-        <aside className="sidebar">
+        <aside className="left-sidebar">
           <PlaybackControls
             canPlay={Boolean(flightLog)}
             currentTimeMs={playheadMs}
@@ -191,6 +221,52 @@ function App() {
             onPlaybackRateChange={setPlaybackRate}
           />
 
+          <section className="control-panel motion-smoothing-panel" aria-label="Motion smoothing">
+            <div className="panel-heading">
+              <div>
+                <p className="eyebrow">Motion filter</p>
+                <h2>Smoothing</h2>
+              </div>
+              <strong className="smoothing-readout">{Math.round(motionSmoothing * 100)}%</strong>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={motionSmoothing}
+              onChange={(event) => setMotionSmoothing(Number(event.target.value))}
+              className="timeline"
+            />
+            <p className="panel-note">0% is raw motion. Increase to smooth all aircraft movement and attitude.</p>
+          </section>
+
+        </aside>
+
+        <article className="scene-card">
+          <div className="scene-card__header">
+            <div>
+              <p className="eyebrow">3D View</p>
+              <h2>Pilot view</h2>
+            </div>
+            <button
+              type="button"
+              className={`button button--secondary ${showTrailLines ? 'button--active' : ''}`}
+              onClick={() => setShowTrailLines((current) => !current)}
+            >
+              {showTrailLines ? 'Hide lines' : 'Show lines'}
+            </button>
+          </div>
+
+          <FlightScene
+            currentFrame={currentFrame}
+            frames={flightLog?.frames ?? []}
+            showTrail={showTrailLines}
+            motionSmoothing={motionSmoothing}
+          />
+        </article>
+
+        <aside className="right-sidebar">
           <TelemetryPanel currentFrame={currentFrame} flightLog={flightLog} />
 
           <section className="summary-panel">
