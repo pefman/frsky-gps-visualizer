@@ -7,7 +7,7 @@ Web app for replaying FrSky telemetry logs in a 3D pilot view.
 - Upload FrSky CSV logs and parse telemetry (speed, altitude, attitude, controls, GPS, RSSI).
 - 3D pilot-view playback with an Extra 300S-inspired aircraft model.
 - Motion smoothing slider that smooths the rendered aircraft motion between sampled frames.
-- Per-channel interpolation controls for playback sampling, including exact-vs-interpolated telemetry channels.
+- Interpolation FPS slider from 0 to 60, where 0 keeps exact source frames and higher values resample the log more densely.
 - Optional flight trail line.
 - Timeline under the viewport with:
 	- auto-detected highlight segments
@@ -32,10 +32,10 @@ Click `Load demo` to:
 
 The app uses two separate layers of smoothing:
 
-- Playback interpolation happens when a frame is sampled from the CSV. You can toggle individual channels in the `Interpolated channels` panel. When a channel is enabled, it is blended between surrounding frames; when it is disabled, it stays exact from the source frame.
+- Playback interpolation happens when a frame is sampled from the CSV. The `Interpolation FPS` slider controls how densely the log is resampled, from exact source frames at `0` up to `60 fps`.
 - Motion smoothing happens after sampling, inside the 3D scene. It smooths the aircraft’s rendered position, heading, pitch, and roll so the plane moves more fluidly even when frame intervals are uneven.
 
-In short: interpolation decides what values are sampled from the log, and motion smoothing decides how those sampled values are drawn in the viewport.
+In short: interpolation decides how dense the sampled flight is, and motion smoothing decides how those sampled values are drawn in the viewport.
 
 ## Timeline And Markers
 
@@ -84,7 +84,7 @@ npm run preview
 - If GPS mode is active, rows without GPS coordinates are skipped during load.
 - Ground/pilot baseline is calibrated from the loaded flight start frame.
 - RSSI live readouts use exact frame values (not interpolated).
-- Heading, roll, speed, altitude, position, and stick channels can be interpolated independently.
+- Heading, roll, speed, altitude, position, and stick channels are resampled together when interpolation is enabled.
 
 ## Deploy (Vibekoded)
 

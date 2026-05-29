@@ -1,30 +1,7 @@
 import type { TelemetryFrame } from '../types'
 
-export interface InterpolationSettings {
-  position: boolean
-  heading: boolean
-  speed: boolean
-  altitude: boolean
-  roll: boolean
-  pitch: boolean
-  throttle: boolean
-  rudder: boolean
-  elevator: boolean
-  aileron: boolean
-}
-
-export const DEFAULT_INTERPOLATION_SETTINGS: InterpolationSettings = {
-  position: true,
-  heading: true,
-  speed: true,
-  altitude: true,
-  roll: true,
-  pitch: true,
-  throttle: true,
-  rudder: true,
-  elevator: true,
-  aileron: true,
-}
+export const MIN_INTERPOLATION_FPS = 0
+export const MAX_INTERPOLATION_FPS = 60
 
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max)
@@ -42,7 +19,6 @@ function lerpAngle(start: number, end: number, amount: number): number {
 export function sampleFrameAtTime(
   frames: TelemetryFrame[],
   elapsedMs: number,
-  interpolationSettings: InterpolationSettings = DEFAULT_INTERPOLATION_SETTINGS,
 ): TelemetryFrame | null {
   if (frames.length === 0) {
     return null
@@ -78,41 +54,68 @@ export function sampleFrameAtTime(
   return {
     ...previousFrame,
     elapsedMs,
-    altitudeM: interpolationSettings.altitude
-      ? lerp(previousFrame.altitudeM, nextFrame.altitudeM, amount)
-      : previousFrame.altitudeM,
-    speedKmh: interpolationSettings.speed
-      ? lerp(previousFrame.speedKmh, nextFrame.speedKmh, amount)
-      : previousFrame.speedKmh,
+    altitudeM: lerp(previousFrame.altitudeM, nextFrame.altitudeM, amount),
+    speedKmh: lerp(previousFrame.speedKmh, nextFrame.speedKmh, amount),
     rssi900MdB: previousFrame.rssi900MdB,
     rssi24GdB: previousFrame.rssi24GdB,
-    rollDeg: interpolationSettings.roll
-      ? lerpAngle(previousFrame.rollDeg, nextFrame.rollDeg, amount)
-      : previousFrame.rollDeg,
-    pitchDeg: interpolationSettings.pitch
-      ? lerp(previousFrame.pitchDeg, nextFrame.pitchDeg, amount)
-      : previousFrame.pitchDeg,
-    throttle: interpolationSettings.throttle
-      ? lerp(previousFrame.throttle, nextFrame.throttle, amount)
-      : previousFrame.throttle,
-    rudder: interpolationSettings.rudder
-      ? lerp(previousFrame.rudder, nextFrame.rudder, amount)
-      : previousFrame.rudder,
-    elevator: interpolationSettings.elevator
-      ? lerp(previousFrame.elevator, nextFrame.elevator, amount)
-      : previousFrame.elevator,
-    aileron: interpolationSettings.aileron
-      ? lerp(previousFrame.aileron, nextFrame.aileron, amount)
-      : previousFrame.aileron,
-    headingRad: interpolationSettings.heading
-      ? lerpAngle(previousFrame.headingRad, nextFrame.headingRad, amount)
-      : previousFrame.headingRad,
+    rollDeg: lerpAngle(previousFrame.rollDeg, nextFrame.rollDeg, amount),
+    pitchDeg: lerp(previousFrame.pitchDeg, nextFrame.pitchDeg, amount),
+    throttle: lerp(previousFrame.throttle, nextFrame.throttle, amount),
+    rudder: lerp(previousFrame.rudder, nextFrame.rudder, amount),
+    elevator: lerp(previousFrame.elevator, nextFrame.elevator, amount),
+    aileron: lerp(previousFrame.aileron, nextFrame.aileron, amount),
+    headingRad: lerpAngle(previousFrame.headingRad, nextFrame.headingRad, amount),
     point: {
-      x: interpolationSettings.position ? lerp(previousFrame.point.x, nextFrame.point.x, amount) : previousFrame.point.x,
-      y: interpolationSettings.position ? lerp(previousFrame.point.y, nextFrame.point.y, amount) : previousFrame.point.y,
-      z: interpolationSettings.position ? lerp(previousFrame.point.z, nextFrame.point.z, amount) : previousFrame.point.z,
+      x: lerp(previousFrame.point.x, nextFrame.point.x, amount),
+      y: lerp(previousFrame.point.y, nextFrame.point.y, amount),
+      z: lerp(previousFrame.point.z, nextFrame.point.z, amount),
     },
   }
+}
+
+export function buildInterpolatedPlaybackFrames(
+  frames: TelemetryFrame[],
+  targetFps: number,
+): TelemetryFrame[] {
+  if (frames.length === 0) {
+    return []
+  }
+
+  const normalizedFps = clamp(Math.round(targetFps), MIN_INTERPOLATION_FPS, MAX_INTERPOLATION_FPS)
+  if (normalizedFps === 0 || frames.length === 1) {
+    return frames
+  }
+
+  const stepMs = 1000 / normalizedFps
+  const lastElapsedMs = frames[frames.length - 1].elapsedMs
+  const playbackFrames: TelemetryFrame[] = []
+
+  for (let sampleIndex = 0, elapsedMs = 0; elapsedMs < lastElapsedMs; sampleIndex += 1, elapsedMs = sampleIndex * stepMs) {
+    const sampledFrame = sampleFrameAtTime(frames, elapsedMs)
+    if (!sampledFrame) {
+      continue
+    }
+
+    playbackFrames.push({
+      ...sampledFrame,
+      index: sampleIndex,
+      elapsedMs,
+    })
+  }
+
+  const finalSample = sampleFrameAtTime(frames, lastElapsedMs)
+  if (finalSample) {
+    const previous = playbackFrames[playbackFrames.length - 1]
+    if (!previous || Math.abs(previous.elapsedMs - lastElapsedMs) > 0.001) {
+      playbackFrames.push({
+        ...finalSample,
+        index: playbackFrames.length,
+        elapsedMs: lastElapsedMs,
+      })
+    }
+  }
+
+  return playbackFrames
 }
 
 export function findFrameIndexAtTime(frames: TelemetryFrame[], elapsedMs: number): number {

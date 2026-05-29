@@ -6,7 +6,14 @@ import { PlaybackControls } from './components/PlaybackControls'
 import { TelemetryPanel } from './components/TelemetryPanel'
 import { buildFlightPath } from './lib/buildFlightPath'
 import { createDemoFlightLog } from './lib/demoFlight'
-import { clamp, DEFAULT_INTERPOLATION_SETTINGS, sampleFrameAtTime } from './lib/playback'
+import {
+  buildInterpolatedPlaybackFrames,
+  clamp,
+  MAX_INTERPOLATION_FPS,
+  MIN_INTERPOLATION_FPS,
+  findFrameIndexAtTime,
+  sampleFrameAtTime,
+} from './lib/playback'
 import { parseFrskyCsv } from './lib/parseFrskyCsv'
 import { buildTimelineHighlights, buildTimelineMarkers } from './lib/timelineHighlights'
 import type { ParsedFlightLog } from './types'
@@ -21,10 +28,24 @@ function App() {
   const [showTrailLines, setShowTrailLines] = useState(false)
   const [showPathTrail, setShowPathTrail] = useState(false)
   const [motionSmoothing, setMotionSmoothing] = useState(0)
-  const [interpolationSettings, setInterpolationSettings] = useState(DEFAULT_INTERPOLATION_SETTINGS)
+  const [interpolationFps, setInterpolationFps] = useState(MAX_INTERPOLATION_FPS)
 
   const durationMs = flightLog?.summary.durationMs ?? 0
-  const currentFrame = flightLog ? sampleFrameAtTime(flightLog.frames, playheadMs, interpolationSettings) : null
+  const playbackFrames = useMemo(
+    () => (flightLog ? buildInterpolatedPlaybackFrames(flightLog.frames, interpolationFps) : []),
+    [flightLog, interpolationFps],
+  )
+  const currentFrame = useMemo(() => {
+    if (!flightLog) {
+      return null
+    }
+
+    if (interpolationFps === 0) {
+      return flightLog.frames[findFrameIndexAtTime(flightLog.frames, playheadMs)] ?? null
+    }
+
+    return playbackFrames.length > 0 ? sampleFrameAtTime(playbackFrames, playheadMs) : null
+  }, [flightLog, interpolationFps, playbackFrames, playheadMs])
   const timelineHighlights = useMemo(() => buildTimelineHighlights(flightLog), [flightLog])
   const timelineMarkers = useMemo(
     () => buildTimelineMarkers(flightLog, timelineHighlights),
@@ -131,6 +152,7 @@ function App() {
     setFlightLog(createDemoFlightLog())
     setPlayheadMs(0)
     setMotionSmoothing(1)
+    setInterpolationFps(MAX_INTERPOLATION_FPS)
     setIsPlaying(true)
   }
 
@@ -193,43 +215,6 @@ function App() {
     },
   ]
 
-  const interpolatedChannels = [
-    { key: 'position', label: 'Position X/Y/Z' },
-    { key: 'heading', label: 'Heading' },
-    { key: 'speed', label: 'Speed' },
-    { key: 'altitude', label: 'Altitude' },
-    { key: 'roll', label: 'Roll' },
-    { key: 'pitch', label: 'Pitch' },
-    { key: 'throttle', label: 'Throttle' },
-    { key: 'rudder', label: 'Rudder' },
-    { key: 'elevator', label: 'Elevator' },
-    { key: 'aileron', label: 'Aileron' },
-  ] as const
-
-  function handleInterpolationToggle(key: keyof typeof interpolationSettings) {
-    setInterpolationSettings((current) => ({
-      ...current,
-      [key]: !current[key],
-    }))
-  }
-
-  function handleToggleAllInterpolation(enabled: boolean) {
-    setInterpolationSettings((current) => {
-      const next = { ...current }
-      for (const { key } of interpolatedChannels) {
-        next[key] = enabled
-      }
-      return next
-    })
-  }
-
-  function handleResetInterpolationSettings() {
-    setInterpolationSettings(DEFAULT_INTERPOLATION_SETTINGS)
-  }
-
-  const activeInterpolationCount = interpolatedChannels.filter(({ key }) => interpolationSettings[key]).length
-  const allInterpolationEnabled = activeInterpolationCount === interpolatedChannels.length
-
   const exactChannels = [
     'RSSI 900M',
     'RSSI 2.4G',
@@ -290,54 +275,41 @@ function App() {
             <div className="card-body gap-3 p-4">
               <div>
                 <p className="text-[0.6rem] font-semibold uppercase tracking-[0.16em] text-primary">Playback math</p>
-                <h2 className="text-lg font-bold text-base-content">Interpolated channels</h2>
-                <p className="text-xs text-base-content/70">Enabled {activeInterpolationCount} of {interpolatedChannels.length}</p>
+                <h2 className="text-lg font-bold text-base-content">Interpolation target</h2>
+                <p className="text-xs text-base-content/70">0 = exact source frames, 60 = max target smoothness</p>
               </div>
 
               <label className="rounded-box border border-base-300 bg-base-200/60 p-2.5">
-                <span className="flex items-center justify-between gap-2">
-                  <span>
-                    <strong className="block text-sm font-semibold text-base-content">Interpolate all</strong>
-                    <span className="mt-0.5 block text-[11px] text-base-content/65">
-                      Toggle every channel below at once
-                    </span>
+                <span className="flex items-center justify-between gap-3 text-xs text-base-content/70">
+                  <span className="min-w-0">
+                    <strong className="block text-sm font-semibold text-base-content">Interpolation FPS</strong>
+                    <span className="mt-0.5 block">Resamples the log up to 60 fps, independent of source density.</span>
                   </span>
-                  <input
-                    type="checkbox"
-                    className="toggle toggle-sm"
-                    checked={allInterpolationEnabled}
-                    onChange={(event) => handleToggleAllInterpolation(event.target.checked)}
-                  />
+                  <span className="shrink-0 rounded-full border border-base-300 bg-base-100 px-2 py-0.5 text-[11px] font-semibold text-base-content">
+                    {interpolationFps === 0 ? 'Exact' : `${interpolationFps} fps`}
+                  </span>
                 </span>
+
+                <input
+                  type="range"
+                  min={MIN_INTERPOLATION_FPS}
+                  max={MAX_INTERPOLATION_FPS}
+                  step={1}
+                  value={interpolationFps}
+                  onChange={(event) => setInterpolationFps(Number(event.target.value))}
+                  className="range range-primary mt-3"
+                  aria-label="Interpolation FPS"
+                />
+
+                <div className="mt-1 flex justify-between text-[10px] text-base-content/55">
+                  <span>0</span>
+                  <span>30</span>
+                  <span>60</span>
+                </div>
               </label>
 
-              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-                {interpolatedChannels.map(({ key, label }) => (
-                  <label key={key} className="rounded-box border border-base-300 bg-base-200/60 p-2.5">
-                    <span className="flex items-start justify-between gap-2">
-                      <span>
-                        <strong className="block text-sm font-semibold text-base-content">{label}</strong>
-                        <span className="mt-0.5 block text-[11px] text-base-content/65">
-                          {interpolationSettings[key] ? 'Interpolated' : 'Exact source frame'}
-                        </span>
-                      </span>
-                      <input
-                        type="checkbox"
-                        className="toggle toggle-sm"
-                        checked={interpolationSettings[key]}
-                        onChange={() => handleInterpolationToggle(key)}
-                      />
-                    </span>
-                  </label>
-                ))}
-              </div>
-
-              <button type="button" className="btn btn-ghost btn-xs self-start" onClick={handleResetInterpolationSettings}>
-                Reset to defaults
-              </button>
-
               <div className="rounded-box border border-base-300 bg-base-200/50 p-2.5 text-xs text-base-content/75">
-                <strong className="block text-base-content">Exact (not interpolated)</strong>
+                <strong className="block text-base-content">Always exact</strong>
                 <span>{exactChannels.join(', ')}.</span>
               </div>
             </div>
