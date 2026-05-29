@@ -6,7 +6,8 @@ Web app for replaying FrSky telemetry logs in a 3D pilot view.
 
 - Upload FrSky CSV logs and parse telemetry (speed, altitude, attitude, controls, GPS, RSSI).
 - 3D pilot-view playback with an Extra 300S-inspired aircraft model.
-- Motion smoothing slider (movement/attitude smoothing only).
+- Motion smoothing slider that smooths the rendered aircraft motion between sampled frames.
+- Per-channel interpolation controls for playback sampling, including exact-vs-interpolated telemetry channels.
 - Optional flight trail line.
 - Timeline under the viewport with:
 	- auto-detected highlight segments
@@ -22,10 +23,19 @@ Web app for replaying FrSky telemetry logs in a 3D pilot view.
 
 Click `Load demo` to:
 
-- load `src/assets/demo-segment.csv`
+- load `src/assets/demo-full-flight.csv`
 - set smoothing to 100%
 - jump playhead to start
 - auto-play immediately
+
+## Smoothing And Interpolation
+
+The app uses two separate layers of smoothing:
+
+- Playback interpolation happens when a frame is sampled from the CSV. You can toggle individual channels in the `Interpolated channels` panel. When a channel is enabled, it is blended between surrounding frames; when it is disabled, it stays exact from the source frame.
+- Motion smoothing happens after sampling, inside the 3D scene. It smooths the aircraft’s rendered position, heading, pitch, and roll so the plane moves more fluidly even when frame intervals are uneven.
+
+In short: interpolation decides what values are sampled from the log, and motion smoothing decides how those sampled values are drawn in the viewport.
 
 ## Timeline And Markers
 
@@ -74,6 +84,7 @@ npm run preview
 - If GPS mode is active, rows without GPS coordinates are skipped during load.
 - Ground/pilot baseline is calibrated from the loaded flight start frame.
 - RSSI live readouts use exact frame values (not interpolated).
+- Heading, roll, speed, altitude, position, and stick channels can be interpolated independently.
 
 ## Deploy (Vibekoded)
 
