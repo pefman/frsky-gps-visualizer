@@ -22,7 +22,7 @@ interface SceneRefs {
 const PILOT_CAMERA_DISTANCE = 5
 const PILOT_CAMERA_HEIGHT = 1.8
 const PILOT_LOOK_LIFT = 1.6
-const AIRCRAFT_MARKER_RADIUS = 1.2
+const AIRCRAFT_MARKER_RADIUS = 0.36
 const TRIM_SPEED_THRESHOLD_KMH = 8
 const TRIM_ALTITUDE_WINDOW_M = 1.2
 const HIGH_CLOUD_LAYER_COUNT = 18
@@ -79,46 +79,121 @@ function lerpAngle(start: number, end: number, amount: number): number {
 function createAircraftModel(): THREE.Group {
   const aircraft = new THREE.Group()
 
-  const fuselage = new THREE.Mesh(
-    new THREE.BoxGeometry(6, 0.8, 0.9),
-    new THREE.MeshStandardMaterial({ color: '#f97316', metalness: 0.1, roughness: 0.6 }),
-  )
-  const wing = new THREE.Mesh(
-    new THREE.BoxGeometry(1.6, 0.12, 6.8),
-    new THREE.MeshStandardMaterial({ color: '#0f172a', metalness: 0.15, roughness: 0.5 }),
-  )
-  const tailWing = new THREE.Mesh(
-    new THREE.BoxGeometry(1.2, 0.12, 2.2),
-    new THREE.MeshStandardMaterial({ color: '#155e75', metalness: 0.1, roughness: 0.5 }),
-  )
-  tailWing.position.set(-2.5, 0.3, 0)
+  const paintWhite = new THREE.MeshStandardMaterial({ color: '#f8fafc', roughness: 0.52, metalness: 0.08 })
+  const paintRed = new THREE.MeshStandardMaterial({ color: '#dc2626', roughness: 0.46, metalness: 0.14 })
+  const carbonDark = new THREE.MeshStandardMaterial({ color: '#111827', roughness: 0.58, metalness: 0.2 })
 
-  const verticalTail = new THREE.Mesh(
-    new THREE.BoxGeometry(0.25, 1.1, 0.9),
-    new THREE.MeshStandardMaterial({ color: '#155e75', metalness: 0.1, roughness: 0.5 }),
-  )
-  verticalTail.position.set(-2.6, 0.7, 0)
+  const fuselage = new THREE.Mesh(new THREE.CapsuleGeometry(0.34, 4.9, 9, 18), paintWhite)
+  fuselage.rotation.z = Math.PI / 2
 
   const canopy = new THREE.Mesh(
-    new THREE.SphereGeometry(0.45, 20, 20),
-    new THREE.MeshStandardMaterial({ color: '#38bdf8', transparent: true, opacity: 0.8 }),
+    new THREE.SphereGeometry(0.43, 24, 24),
+    new THREE.MeshStandardMaterial({ color: '#7dd3fc', transparent: true, opacity: 0.74, roughness: 0.12, metalness: 0.08 }),
   )
-  canopy.scale.set(1.8, 0.8, 1)
-  canopy.position.set(0.4, 0.55, 0)
+  canopy.scale.set(1.42, 0.65, 1)
+  canopy.position.set(0.64, 0.42, 0)
 
-  const nose = new THREE.Mesh(
-    new THREE.ConeGeometry(0.45, 1.6, 18),
-    new THREE.MeshStandardMaterial({ color: '#f97316', metalness: 0.1, roughness: 0.6 }),
+  const engineCowling = new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.36, 1.02, 20), paintRed)
+  engineCowling.rotation.z = Math.PI / 2
+  engineCowling.position.set(2.74, 0, 0)
+
+  const spinner = new THREE.Mesh(new THREE.ConeGeometry(0.21, 0.58, 20), paintWhite)
+  spinner.rotation.z = -Math.PI / 2
+  spinner.position.set(3.55, 0, 0)
+
+  const propHub = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.14, 14), carbonDark)
+  propHub.rotation.z = Math.PI / 2
+  propHub.position.set(3.24, 0, 0)
+
+  const propDisk = new THREE.Mesh(
+    new THREE.CircleGeometry(0.96, 36),
+    new THREE.MeshStandardMaterial({ color: '#9ca3af', transparent: true, opacity: 0.17, side: THREE.DoubleSide }),
   )
-  nose.rotation.z = -Math.PI / 2
-  nose.position.set(3.7, 0, 0)
+  propDisk.rotation.y = Math.PI / 2
+  propDisk.position.set(3.22, 0, 0)
 
-  aircraft.add(fuselage, wing, tailWing, verticalTail, canopy, nose)
+  const wingCenter = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.14, 1.2), paintRed)
+  wingCenter.position.set(0.28, -0.03, 0)
+
+  const wingLeft = new THREE.Mesh(new THREE.BoxGeometry(2.9, 0.13, 0.8), paintWhite)
+  wingLeft.rotation.y = Math.PI / 2
+  wingLeft.rotation.z = THREE.MathUtils.degToRad(2.2)
+  wingLeft.position.set(0.27, -0.03, 1.99)
+
+  const wingRight = wingLeft.clone()
+  wingRight.rotation.z = THREE.MathUtils.degToRad(-2.2)
+  wingRight.position.z = -1.99
+
+  const wingTipLeft = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.08, 0.62, 12), paintRed)
+  wingTipLeft.rotation.x = Math.PI / 2
+  wingTipLeft.rotation.z = THREE.MathUtils.degToRad(90)
+  wingTipLeft.position.set(0.28, -0.03, 3.35)
+
+  const wingTipRight = wingTipLeft.clone()
+  wingTipRight.position.z = -3.35
+
+  const horizontalStab = new THREE.Mesh(new THREE.BoxGeometry(1.06, 0.09, 2.18), paintWhite)
+  horizontalStab.position.set(-2.22, 0.24, 0)
+
+  const elevatorAccent = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.1, 2.0), paintRed)
+  elevatorAccent.position.set(-2.6, 0.23, 0)
+
+  const verticalStab = new THREE.Mesh(new THREE.BoxGeometry(0.13, 1.02, 0.8), paintWhite)
+  verticalStab.position.set(-2.56, 0.72, 0)
+
+  const rudderAccent = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.86, 0.22), paintRed)
+  rudderAccent.position.set(-2.62, 0.72, 0)
+
+  const leftGearLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.84, 10), carbonDark)
+  leftGearLeg.position.set(0.76, -0.49, 0.46)
+  leftGearLeg.rotation.z = THREE.MathUtils.degToRad(-12)
+
+  const rightGearLeg = leftGearLeg.clone()
+  rightGearLeg.position.z = -0.46
+  rightGearLeg.rotation.z = THREE.MathUtils.degToRad(12)
+
+  const leftWheelPant = new THREE.Mesh(new THREE.SphereGeometry(0.14, 16, 16), paintRed)
+  leftWheelPant.scale.set(1.45, 0.8, 1)
+  leftWheelPant.position.set(0.9, -0.86, 0.6)
+
+  const rightWheelPant = leftWheelPant.clone()
+  rightWheelPant.position.z = -0.6
+
+  const tailWheel = new THREE.Mesh(new THREE.SphereGeometry(0.07, 12, 12), carbonDark)
+  tailWheel.position.set(-2.88, -0.28, 0)
+
+  const fuselageStripe = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.08, 0.82), paintRed)
+  fuselageStripe.position.set(0.95, 0.07, 0)
+
+  aircraft.add(
+    fuselage,
+    canopy,
+    engineCowling,
+    spinner,
+    propHub,
+    propDisk,
+    wingCenter,
+    wingLeft,
+    wingRight,
+    wingTipLeft,
+    wingTipRight,
+    horizontalStab,
+    elevatorAccent,
+    verticalStab,
+    rudderAccent,
+    leftGearLeg,
+    rightGearLeg,
+    leftWheelPant,
+    rightWheelPant,
+    tailWheel,
+    fuselageStripe,
+  )
+
   const marker = new THREE.Mesh(
     new THREE.SphereGeometry(AIRCRAFT_MARKER_RADIUS, 18, 18),
     new THREE.MeshStandardMaterial({ color: '#fde047', emissive: '#f59e0b', emissiveIntensity: 0.55 }),
   )
-  marker.position.set(0, 0.45, 0)
+  marker.position.set(0.26, 0.26, 0)
   aircraft.add(marker)
   return aircraft
 }
