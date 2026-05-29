@@ -12,6 +12,8 @@ export interface TelemetryFrame {
   elapsedMs: number
   speedKmh: number
   altitudeM: number
+  rssi900MdB: number
+  rssi24GdB: number
   rollDeg: number
   pitchDeg: number
   throttle: number

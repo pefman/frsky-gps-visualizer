@@ -114,7 +114,6 @@ function normalizeFrames(rows: RawRow[]):
 
       const firstRawTimestamp =
           parseTimestamp(populatedRows[0].Date, populatedRows[0].Time)
-      const nominalStepMs = inferNominalStepMs(populatedRows)
       let elapsedMs = 0
       let previousRawTimestamp = firstRawTimestamp
   const hasGpsCoordinates = populatedRows.some((row) => {
@@ -124,7 +123,21 @@ function normalizeFrames(rows: RawRow[]):
 
     const mode: PlaybackMode = hasGpsCoordinates ? 'gps' : 'estimated'
 
-    const frames = populatedRows.map((row, index) => {
+    const usableRows = hasGpsCoordinates ? populatedRows.filter((row) => {
+      const gps = parseGpsCoordinates(row.GPS)
+      return gps.latitude !== null && gps.longitude !== null
+    }) : populatedRows
+
+    if (usableRows.length === 0) {
+      throw new Error('No usable telemetry rows after GPS filtering.')
+    }
+
+    const firstUsableTimestamp = parseTimestamp(usableRows[0].Date, usableRows[0].Time)
+    const usableNominalStepMs = inferNominalStepMs(usableRows)
+    elapsedMs = 0
+    previousRawTimestamp = firstUsableTimestamp
+
+    const frames = usableRows.map((row, index) => {
       const rawTimestamp = parseTimestamp(row.Date, row.Time)
       if (index > 0) {
         const rawDeltaMs = rawTimestamp - previousRawTimestamp
@@ -133,7 +146,7 @@ function normalizeFrames(rows: RawRow[]):
           elapsedMs += rawDeltaMs
         }
         else {
-          elapsedMs += nominalStepMs
+          elapsedMs += usableNominalStepMs
         }
       }
 
@@ -143,6 +156,8 @@ function normalizeFrames(rows: RawRow[]):
         index, timestampMs: firstRawTimestamp + elapsedMs, elapsedMs,
             speedKmh: toNumber(row['GPS speed(km/h)']),
             altitudeM: toNumber(row['GPS alt(m)']),
+            rssi900MdB: toNumber(row['RSSI 900M(dB)']),
+            rssi24GdB: toNumber(row['RSSI 2.4G(dB)']),
             rollDeg: toNumber(row['R.angle(°)']),
             pitchDeg: toNumber(row['P.angle(°)']),
             throttle: toNumber(row.Throttle), rudder: toNumber(row.Rudder),
@@ -247,10 +262,20 @@ export function parseFrskyCsv(csvText: string, fileName: string):
 
       const {frames, mode} = normalizeFrames(parsed.data)
 
+      const normalizedRows = mode === 'gps'
+        ? parsed.data.filter((row) => {
+            if (!row.Date || !row.Time) {
+              return false
+            }
+            const gps = parseGpsCoordinates(row.GPS)
+            return gps.latitude !== null && gps.longitude !== null
+          })
+        : parsed.data.filter((row) => row.Date && row.Time)
+
       const altitudes = frames.map((frame) => frame.altitudeM)
       const speeds = frames.map((frame) => frame.speedKmh)
       const summaryStats = collectSummaryStats(
-          parsed.data.filter((row) => row.Date && row.Time), frames)
+          normalizedRows, frames)
 
       return {
         fileName, frames, mode, summary: {

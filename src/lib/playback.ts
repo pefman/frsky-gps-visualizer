@@ -9,7 +9,7 @@ function lerp(start: number, end: number, amount: number): number {
 }
 
 function lerpAngle(start: number, end: number, amount: number): number {
-  const delta = ((end - start + Math.PI) % (Math.PI * 2)) - Math.PI
+  const delta = Math.atan2(Math.sin(end - start), Math.cos(end - start))
   return start + delta * amount
 }
 
@@ -50,6 +50,8 @@ export function sampleFrameAtTime(frames: TelemetryFrame[], elapsedMs: number): 
     elapsedMs,
     altitudeM: lerp(previousFrame.altitudeM, nextFrame.altitudeM, amount),
     speedKmh: lerp(previousFrame.speedKmh, nextFrame.speedKmh, amount),
+    rssi900MdB: previousFrame.rssi900MdB,
+    rssi24GdB: previousFrame.rssi24GdB,
     rollDeg: lerpAngle(previousFrame.rollDeg, nextFrame.rollDeg, amount),
     pitchDeg: lerp(previousFrame.pitchDeg, nextFrame.pitchDeg, amount),
     throttle: lerp(previousFrame.throttle, nextFrame.throttle, amount),

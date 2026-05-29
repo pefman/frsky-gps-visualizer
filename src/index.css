@@ -1,23 +1,66 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@plugin "daisyui" {
+  themes: light --default;
+}
+
 :root {
-  font-family: 'Avenir Next', 'Helvetica Neue', sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
-  color: #2f241a;
-  background:
-    radial-gradient(circle at top left, rgba(14, 165, 233, 0.18), transparent 28%),
-    radial-gradient(circle at top right, rgba(249, 115, 22, 0.16), transparent 26%),
-    linear-gradient(180deg, #fcf6ee 0%, #f8efe3 100%);
-  --heading: #1f160f;
-  --muted: #68594e;
-  --accent: #b45309;
+  --thistle-100: #2b1a36;
+  --thistle-200: #57346b;
+  --thistle-300: #824ea1;
+  --thistle-400: #a87ec1;
+  --thistle-500: #cdb4db;
+  --thistle-600: #d6c2e2;
+  --thistle-700: #e0d2e9;
+  --thistle-800: #ebe1f0;
+  --thistle-900: #f5f0f8;
+
+  --pastel-petal-100: #5b0023;
+  --pastel-petal-500: #ffc8dd;
+  --pastel-petal-600: #ffd2e3;
+  --pastel-petal-800: #ffe9f1;
+
+  --baby-pink-100: #56001f;
+  --baby-pink-500: #ffafcc;
+  --baby-pink-700: #ffcee0;
+
+  --icy-blue-100: #012f57;
+  --icy-blue-500: #bde0fe;
+  --icy-blue-700: #d8ecfe;
+  --icy-blue-900: #f2f9ff;
+
+  --sky-blue-100: #002b54;
+  --sky-blue-500: #a2d2ff;
+  --sky-blue-700: #c8e4ff;
+  --sky-blue-900: #edf6ff;
+
+  --color-base-100: var(--thistle-900);
+  --color-base-200: var(--thistle-800);
+  --color-base-300: var(--thistle-700);
+  --color-base-content: var(--thistle-100);
+  --color-primary: var(--sky-blue-500);
+  --color-primary-content: var(--sky-blue-100);
+  --color-secondary: var(--pastel-petal-500);
+  --color-secondary-content: var(--pastel-petal-100);
+  --color-accent: var(--baby-pink-500);
+  --color-accent-content: var(--baby-pink-100);
+  --color-neutral: var(--thistle-300);
+  --color-neutral-content: var(--thistle-900);
+  --color-info: var(--icy-blue-500);
+  --color-info-content: var(--icy-blue-100);
+  --color-success: var(--sky-blue-700);
+  --color-success-content: var(--sky-blue-100);
+  --color-warning: var(--pastel-petal-600);
+  --color-warning-content: var(--pastel-petal-100);
+  --color-error: var(--baby-pink-700);
+  --color-error-content: var(--baby-pink-100);
+
+  font-family: 'Manrope', 'Segoe UI', sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
-
-* {
-  box-sizing: border-box;
 }
 
 html,
@@ -29,42 +72,15 @@ body,
 body {
   margin: 0;
   min-width: 320px;
-}
-
-#root {
-  min-height: 100vh;
+  background:
+    radial-gradient(circle at 12% -8%, color-mix(in srgb, var(--sky-blue-500) 34%, transparent), transparent 34%),
+    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--baby-pink-500) 30%, transparent), transparent 32%),
+    radial-gradient(circle at 45% 100%, color-mix(in srgb, var(--pastel-petal-500) 25%, transparent), transparent 35%),
+    linear-gradient(180deg, var(--sky-blue-900) 0%, var(--pastel-petal-800) 100%);
 }
 
 h1,
 h2,
 p {
   margin: 0;
-}
-
-h1,
-h2 {
-  color: var(--heading);
-  font-family: 'Avenir Next Condensed', 'Avenir Next', 'Helvetica Neue', sans-serif;
-  line-height: 0.98;
-}
-
-h1 {
-  max-width: 16ch;
-  font-size: clamp(1.65rem, 3.1vw, 2.65rem);
-  letter-spacing: -0.05em;
-}
-
-h2 {
-  font-size: 1.3rem;
-  letter-spacing: -0.03em;
-}
-
-button,
-input,
-select {
-  font: inherit;
-}
-
-a {
-  color: inherit;
 }

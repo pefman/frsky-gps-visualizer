@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import './App.css'
 import { FlightScene } from './components/FlightScene'
@@ -8,6 +8,7 @@ import { buildFlightPath } from './lib/buildFlightPath'
 import { createDemoFlightLog } from './lib/demoFlight'
 import { clamp, sampleFrameAtTime } from './lib/playback'
 import { parseFrskyCsv } from './lib/parseFrskyCsv'
+import { buildTimelineHighlights, buildTimelineMarkers } from './lib/timelineHighlights'
 import type { ParsedFlightLog } from './types'
 
 function App() {
@@ -22,6 +23,11 @@ function App() {
 
   const durationMs = flightLog?.summary.durationMs ?? 0
   const currentFrame = flightLog ? sampleFrameAtTime(flightLog.frames, playheadMs) : null
+  const timelineHighlights = useMemo(() => buildTimelineHighlights(flightLog), [flightLog])
+  const timelineMarkers = useMemo(
+    () => buildTimelineMarkers(flightLog, timelineHighlights),
+    [flightLog, timelineHighlights],
+  )
 
   useEffect(() => {
     if (!isPlaying || !flightLog) {
@@ -107,6 +113,15 @@ function App() {
     setPlayheadMs(clamp(value, 0, durationMs))
   }
 
+  function handleJumpToHighlight(value: number) {
+    if (!flightLog) {
+      return
+    }
+
+    setPlayheadMs(clamp(value, 0, durationMs))
+    setIsPlaying(true)
+  }
+
   function handleLoadDemo() {
     setErrorMessage('')
     setIsPlaying(false)
@@ -176,116 +191,137 @@ function App() {
   ]
 
   return (
-    <main className="app-shell">
-      <section className="hero-panel">
-        <div>
-          <p className="eyebrow">FrSky Flight Replay</p>
-          <h1>Upload a radio log and watch the flight in 3D.</h1>
-          <p className="hero-copy">
-            Simple browser playback with camera angles, a scrub timeline, and telemetry-driven motion.
-          </p>
-        </div>
-
-        <div className="upload-panel">
-          <div className="upload-actions">
-            <label className="button button--primary button--file">
-              <input type="file" accept=".csv,text/csv" onChange={handleUpload} />
-              {isLoading ? 'Loading CSV...' : 'Upload flight CSV'}
-            </label>
-            <button
-              type="button"
-              className="button button--secondary"
-              onClick={handleLoadDemo}
-            >
-              Load demo
-            </button>
+    <main className="mx-auto flex w-full max-w-[1880px] flex-col gap-5 p-3 md:p-5">
+      <section className="card border border-base-300 bg-base-100/90 shadow-xl">
+        <div className="card-body gap-2 py-2 md:flex-row md:items-center md:justify-between">
+          <div className="min-w-0">
+            <p className="text-[0.6rem] font-semibold uppercase tracking-[0.16em] text-primary">FrSky Flight Replay</p>
+            <h1 className="truncate text-base font-bold text-base-content md:text-lg">
+              Upload a radio log and watch the flight in 3D.
+            </h1>
           </div>
-          <p className="upload-caption">
-            {flightLog ? `Loaded ${flightLog.fileName}` : 'Pick a FrSky CSV exported from your radio.'}
-          </p>
-          {errorMessage ? <p className="error-banner">{errorMessage}</p> : null}
+
+          <div className="min-w-0 space-y-1.5 md:min-w-72">
+            <div className="flex flex-wrap gap-1.5">
+              <label className="btn btn-primary btn-sm">
+                <input type="file" accept=".csv,text/csv" onChange={handleUpload} className="hidden" />
+              {isLoading ? 'Loading CSV...' : 'Upload flight CSV'}
+              </label>
+              <button type="button" className="btn btn-outline btn-sm" onClick={handleLoadDemo}>
+                Load demo
+              </button>
+            </div>
+            <p className="text-xs text-base-content/70">
+              {flightLog ? `Loaded ${flightLog.fileName}` : 'Pick a FrSky CSV exported from your radio.'}
+            </p>
+            {errorMessage ? <div className="alert alert-error py-1.5 text-xs">{errorMessage}</div> : null}
+          </div>
         </div>
       </section>
 
-      <section className="content-grid">
-        <aside className="left-sidebar">
-          <PlaybackControls
-            canPlay={Boolean(flightLog)}
-            currentTimeMs={playheadMs}
-            durationMs={durationMs}
-            isPlaying={isPlaying}
-            playbackRate={playbackRate}
-            onPlayPause={handlePlayPause}
-            onRestart={handleRestart}
-            onSeek={handleSeek}
-            onPlaybackRateChange={setPlaybackRate}
-          />
-
-          <section className="control-panel motion-smoothing-panel" aria-label="Motion smoothing">
-            <div className="panel-heading">
+      <section className="grid items-start gap-5 xl:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)_minmax(15rem,19rem)]">
+        <aside className="grid gap-3 md:grid-cols-2 xl:flex xl:flex-col">
+          <section className="card border border-base-300 bg-base-100/90 shadow-lg" aria-label="Motion smoothing">
+            <div className="card-body gap-3 p-4">
+              <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="eyebrow">Motion filter</p>
-                <h2>Smoothing</h2>
+                  <p className="text-[0.6rem] font-semibold uppercase tracking-[0.16em] text-primary">Motion filter</p>
+                  <h2 className="text-lg font-bold text-base-content">Smoothing</h2>
+                </div>
+                <strong className="text-base font-semibold text-base-content">{Math.round(motionSmoothing * 100)}%</strong>
               </div>
-              <strong className="smoothing-readout">{Math.round(motionSmoothing * 100)}%</strong>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.01}
+                value={motionSmoothing}
+                onChange={(event) => setMotionSmoothing(Number(event.target.value))}
+                className="range range-primary range-sm"
+              />
+              <p className="text-xs text-base-content/70">0% is raw motion. Increase to smooth all aircraft movement and attitude.</p>
             </div>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.01}
-              value={motionSmoothing}
-              onChange={(event) => setMotionSmoothing(Number(event.target.value))}
-              className="timeline"
-            />
-            <p className="panel-note">0% is raw motion. Increase to smooth all aircraft movement and attitude.</p>
           </section>
 
+          <section className="card border border-base-300 bg-base-100/90 shadow-lg">
+            <div className="card-body gap-3 p-4">
+              <div>
+                <p className="text-[0.6rem] font-semibold uppercase tracking-[0.16em] text-primary">Flight summary</p>
+                <h2 className="text-lg font-bold text-base-content">Quick stats</h2>
+              </div>
+
+              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                {summaryCards.map((card) => (
+                  <article key={card.label} className="rounded-box border border-base-300 bg-base-200/60 p-2.5">
+                    <span className="block text-[11px] text-base-content/65">{card.label}</span>
+                    <strong className="text-sm font-semibold text-base-content">{card.value}</strong>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </section>
         </aside>
 
-        <article className="scene-card">
-          <div className="scene-card__header">
-            <div>
-              <p className="eyebrow">3D View</p>
-              <h2>Pilot view</h2>
+        <article className="card border border-base-300 bg-base-100/90 shadow-xl">
+          <div className="card-body gap-3 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-[0.6rem] font-semibold uppercase tracking-[0.16em] text-primary">3D View</p>
+                <h2 className="text-lg font-bold text-base-content">Pilot view</h2>
+              </div>
+              <button
+                type="button"
+                className={`btn btn-sm ${showTrailLines ? 'btn-primary' : 'btn-outline'}`}
+                onClick={() => setShowTrailLines((current) => !current)}
+              >
+                {showTrailLines ? 'Hide lines' : 'Show lines'}
+              </button>
             </div>
-            <button
-              type="button"
-              className={`button button--secondary ${showTrailLines ? 'button--active' : ''}`}
-              onClick={() => setShowTrailLines((current) => !current)}
-            >
-              {showTrailLines ? 'Hide lines' : 'Show lines'}
-            </button>
-          </div>
 
-          <FlightScene
-            currentFrame={currentFrame}
-            frames={flightLog?.frames ?? []}
-            showTrail={showTrailLines}
-            motionSmoothing={motionSmoothing}
-          />
+            {flightLog ? (
+              <FlightScene
+                currentFrame={currentFrame}
+                frames={flightLog.frames}
+                showTrail={showTrailLines}
+                motionSmoothing={motionSmoothing}
+              />
+            ) : (
+              <div className="scene-view flex items-center justify-center">
+                <div className="space-y-3 rounded-box border border-base-300 bg-base-100/85 p-6 text-center shadow">
+                  <p className="text-sm text-base-content/70">No flight loaded</p>
+                  <h3 className="text-xl font-bold text-base-content">Load a CSV file or start demo</h3>
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    <label className="btn btn-primary btn-sm">
+                      <input type="file" accept=".csv,text/csv" onChange={handleUpload} className="hidden" />
+                      {isLoading ? 'Loading CSV...' : 'Load file'}
+                    </label>
+                    <button type="button" className="btn btn-outline btn-sm" onClick={handleLoadDemo}>
+                      Load demo
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <PlaybackControls
+              canPlay={Boolean(flightLog)}
+              currentTimeMs={playheadMs}
+              durationMs={durationMs}
+              isPlaying={isPlaying}
+              playbackRate={playbackRate}
+              timelineHighlights={timelineHighlights}
+              timelineMarkers={timelineMarkers}
+              onPlayPause={handlePlayPause}
+              onRestart={handleRestart}
+              onSeek={handleSeek}
+              onJumpToHighlight={handleJumpToHighlight}
+              onPlaybackRateChange={setPlaybackRate}
+            />
+          </div>
         </article>
 
-        <aside className="right-sidebar">
+        <aside className="grid gap-3">
           <TelemetryPanel currentFrame={currentFrame} flightLog={flightLog} />
-
-          <section className="summary-panel">
-            <div className="panel-heading">
-              <div>
-                <p className="eyebrow">Flight summary</p>
-                <h2>Quick stats</h2>
-              </div>
-            </div>
-
-            <div className="summary-grid">
-              {summaryCards.map((card) => (
-                <article key={card.label}>
-                  <span>{card.label}</span>
-                  <strong>{card.value}</strong>
-                </article>
-              ))}
-            </div>
-          </section>
         </aside>
       </section>
     </main>
