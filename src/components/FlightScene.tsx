@@ -623,7 +623,9 @@ export function FlightScene({
       return
     }
 
-    const groundLevelY = frames[0]?.point.y ?? 0
+    const groundLevelY = frames.length > 0
+      ? Math.min(...frames.map((frame) => frame.point.y))
+      : 0
     groundLevelYRef.current = groundLevelY
     refs.ground.position.y = groundLevelY
     refs.grid.position.y = groundLevelY + 0.02
