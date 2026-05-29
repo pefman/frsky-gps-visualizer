@@ -40,26 +40,25 @@ const AIRCRAFT_MODEL_SCALE = TARGET_AIRCRAFT_WINGSPAN_M / BASE_AIRCRAFT_WINGSPAN
 const TARGET_SCREEN_FRACTION = 1 / 20
 const TRIM_SPEED_THRESHOLD_KMH = 8
 const TRIM_ALTITUDE_WINDOW_M = 1.2
-const HIGH_CLOUD_LAYER_COUNT = 18
+const HIGH_CLOUD_LAYER_COUNT = 34
 
 function createCloudField(): { group: THREE.Group; dispose: () => void } {
   const group = new THREE.Group()
   const cloudSheetGeometry = new THREE.CircleGeometry(1, 32)
-  const cloudSheetMaterial = new THREE.MeshStandardMaterial({
+  const cloudSheetMaterial = new THREE.MeshBasicMaterial({
     color: '#ffffff',
     transparent: true,
-    opacity: 0.28,
-    roughness: 0.95,
-    metalness: 0,
+    opacity: 0.34,
     side: THREE.DoubleSide,
     depthWrite: false,
+    toneMapped: false,
   })
 
   for (let i = 0; i < HIGH_CLOUD_LAYER_COUNT; i += 1) {
     const cloudSheet = new THREE.Mesh(cloudSheetGeometry, cloudSheetMaterial)
     const angle = i * 0.73
-    const radius = 520 + i * 36
-    const cloudY = 180 + (i % 5) * 16
+    const radius = 360 + i * 28
+    const cloudY = 75 + (i % 7) * 14
     const scale = 180 + (i % 6) * 38
 
     cloudSheet.position.set(Math.cos(angle) * radius, cloudY, Math.sin(angle) * radius)
